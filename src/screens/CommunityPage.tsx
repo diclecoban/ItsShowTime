@@ -27,6 +27,7 @@ import { accent, bg, gold, ink, muted, themes } from '../theme';
 import { styles } from '../styles';
 import type {
   CommunityContext,
+  CommunityComment,
   CustomList,
   DetailEpisode,
   Episode,
@@ -38,7 +39,17 @@ import type {
   UpcomingGroup,
 } from '../types';
 
-export function CommunityPage({ context, onBack }: { context: CommunityContext; onBack: () => void }) {
+export function CommunityPage({
+  context,
+  communityComments,
+  onBack,
+}: {
+  context: CommunityContext;
+  communityComments: CommunityComment[];
+  onBack: () => void;
+}) {
+  const visibleComments = communityComments.length ? communityComments : comments;
+
   return (
     <View>
       <Pressable style={styles.detailBack} onPress={onBack}>
@@ -79,7 +90,7 @@ export function CommunityPage({ context, onBack }: { context: CommunityContext; 
         <>
           <Text style={styles.sectionTitle}>Top comments</Text>
           <View style={styles.commentList}>
-            {comments.map((comment) => (
+            {visibleComments.map((comment) => (
               <View key={`${comment.user}-${comment.mood}`} style={styles.commentCard}>
                 <View style={styles.commentAvatar}>
                   <Text style={styles.commentAvatarText}>{comment.user.slice(0, 1)}</Text>

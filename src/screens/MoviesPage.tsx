@@ -4,6 +4,7 @@ import {
   CalendarDays,
   Check,
   Library,
+  Lock,
   ListPlus,
   MessageCircle,
   Plus,
@@ -41,11 +42,25 @@ import type {
 export function MoviesPage({ movies, onSelectMovie }: { movies: Movie[]; onSelectMovie: (movie: Movie) => void }) {
   return (
     <View>
-      <View style={styles.segment}>
-        <Text style={styles.segmentActive}>Watchlist</Text>
-        <Text style={styles.segmentMuted}>Watched</Text>
+      <View style={styles.movieLockedHero}>
+        <View style={styles.movieLockIcon}>
+          <Lock color={bg} size={26} />
+        </View>
+        <Text style={styles.movieLockedTitle}>Movies are coming when the budget is ready</Text>
+        <Text style={styles.movieLockedBody}>
+          Series tracking is free while we keep building the catalog. A richer movie database, ratings, lists, and reactions
+          will unlock when Watchlight has the budget for broader data access.
+        </Text>
+        <Pressable
+          style={styles.supportUsButton}
+          onPress={() => window.open('https://www.buymeacoffee.com/diclesaracoban', '_blank', 'noopener,noreferrer')}
+        >
+          <Text style={styles.supportUsText}>Support us</Text>
+        </Pressable>
       </View>
-      {movies.map((movie) => (
+
+      <Text style={styles.sectionTitle}>Preview</Text>
+      {movies.slice(0, 2).map((movie) => (
         <Pressable key={movie.id} style={styles.movieCard} onPress={() => onSelectMovie(movie)}>
           <ImageBackground
             source={{ uri: movie.image }}

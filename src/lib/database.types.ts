@@ -95,6 +95,24 @@ export type Database = {
         Insert: Partial<Database['public']['Tables']['movies']['Row']> & { title: string };
         Update: Partial<Database['public']['Tables']['movies']['Insert']>;
       };
+      genres: {
+        Row: {
+          id: string;
+          name: string;
+        };
+        Insert: Partial<Database['public']['Tables']['genres']['Row']> & { name: string };
+        Update: Partial<Database['public']['Tables']['genres']['Insert']>;
+      };
+      platforms: {
+        Row: {
+          id: string;
+          name: string;
+          logo_url: string | null;
+          created_at: string;
+        };
+        Insert: Partial<Database['public']['Tables']['platforms']['Row']> & { name: string };
+        Update: Partial<Database['public']['Tables']['platforms']['Insert']>;
+      };
       user_library_items: {
         Row: {
           id: string;
@@ -163,6 +181,23 @@ export type Database = {
         Insert: Partial<Database['public']['Tables']['lists']['Row']> & { user_id: string; title: string };
         Update: Partial<Database['public']['Tables']['lists']['Insert']>;
       };
+      list_items: {
+        Row: {
+          id: string;
+          list_id: string;
+          media_type: 'show' | 'movie';
+          show_id: string | null;
+          movie_id: string | null;
+          target_id: string;
+          note: string | null;
+          added_at: string;
+        };
+        Insert: Partial<Database['public']['Tables']['list_items']['Row']> & {
+          list_id: string;
+          media_type: 'show' | 'movie';
+        };
+        Update: Partial<Database['public']['Tables']['list_items']['Insert']>;
+      };
       notifications: {
         Row: {
           id: string;
@@ -180,6 +215,59 @@ export type Database = {
           title: string;
         };
         Update: Partial<Database['public']['Tables']['notifications']['Insert']>;
+      };
+      reminders: {
+        Row: {
+          id: string;
+          user_id: string;
+          episode_id: string;
+          remind_at: string;
+          enabled: boolean;
+          created_at: string;
+        };
+        Insert: Partial<Database['public']['Tables']['reminders']['Row']> & {
+          user_id: string;
+          episode_id: string;
+          remind_at: string;
+        };
+        Update: Partial<Database['public']['Tables']['reminders']['Insert']>;
+      };
+      account_deletion_requests: {
+        Row: {
+          id: string;
+          user_id: string;
+          reason: string | null;
+          processed_at: string | null;
+          created_at: string;
+        };
+        Insert: Partial<Database['public']['Tables']['account_deletion_requests']['Row']> & {
+          user_id: string;
+        };
+        Update: Partial<Database['public']['Tables']['account_deletion_requests']['Insert']>;
+      };
+      user_genres: {
+        Row: {
+          user_id: string;
+          genre_id: string;
+          created_at: string;
+        };
+        Insert: Partial<Database['public']['Tables']['user_genres']['Row']> & {
+          user_id: string;
+          genre_id: string;
+        };
+        Update: Partial<Database['public']['Tables']['user_genres']['Insert']>;
+      };
+      user_streaming_services: {
+        Row: {
+          user_id: string;
+          platform_id: string;
+          created_at: string;
+        };
+        Insert: Partial<Database['public']['Tables']['user_streaming_services']['Row']> & {
+          user_id: string;
+          platform_id: string;
+        };
+        Update: Partial<Database['public']['Tables']['user_streaming_services']['Insert']>;
       };
     };
   };

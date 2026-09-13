@@ -38,28 +38,54 @@ import type {
   UpcomingGroup,
 } from '../types';
 
-export function AuthPage({ onContinue }: { onContinue: () => void }) {
+export function AuthPage({
+  onContinue,
+}: {
+  onContinue: (
+    mode: 'signin' | 'signup',
+    email: string,
+    password: string,
+    profile: { displayName: string; username: string }
+  ) => Promise<void>;
+}) {
   const [mode, setMode] = useState<'signin' | 'signup'>('signin');
   const [email, setEmail] = useState('dicle@example.com');
   const [password, setPassword] = useState('watchlight');
+  const [displayName, setDisplayName] = useState('Dicle');
+  const [username, setUsername] = useState('dicle');
   const [showValidation, setShowValidation] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const [helperMessage, setHelperMessage] = useState('');
-  const canContinue = email.includes('@') && password.length >= 6;
+  const isUsernameValid = /^[a-z0-9_]{3,24}$/i.test(username);
+  const canContinue =
+    email.includes('@') &&
+    password.length >= 6 &&
+    (mode === 'signin' || (displayName.trim().length >= 2 && isUsernameValid));
   const submit = () => {
     setShowValidation(true);
 
     if (!canContinue) {
-      setHelperMessage('Use a valid email and at least 6 characters.');
+      setHelperMessage(
+        mode === 'signin'
+          ? 'Use a valid email and at least 6 characters.'
+          : 'Complete your profile details before creating an account.'
+      );
       return;
     }
 
     setIsLoading(true);
     setHelperMessage('');
-    window.setTimeout(() => {
+
+    onContinue(mode, email, password, {
+      displayName: displayName.trim(),
+      username: username.trim().toLowerCase(),
+    })
+      .catch((error: unknown) => {
+        setHelperMessage(error instanceof Error ? error.message : 'Something went wrong. Please try again.');
+      })
+      .finally(() => {
       setIsLoading(false);
-      onContinue();
-    }, 450);
+      });
   };
 
   return (
@@ -73,11 +99,11 @@ export function AuthPage({ onContinue }: { onContinue: () => void }) {
       </Text>
 
       <View style={styles.authCard}>
-        <Pressable style={styles.authProviderButton} onPress={onContinue}>
+        <Pressable style={styles.authProviderButton} onPress={() => setHelperMessage('Google sign-in will be connected next.')}>
           <Text style={styles.authProviderMark}>G</Text>
           <Text style={styles.authProviderText}>Continue with Google</Text>
         </Pressable>
-        <Pressable style={styles.authProviderButton} onPress={onContinue}>
+        <Pressable style={styles.authProviderButton} onPress={() => setHelperMessage('Apple sign-in will be connected next.')}>
           <Text style={styles.authProviderMark}>A</Text>
           <Text style={styles.authProviderText}>Continue with Apple</Text>
         </Pressable>
@@ -87,6 +113,30 @@ export function AuthPage({ onContinue }: { onContinue: () => void }) {
           <Text style={styles.authDividerText}>or</Text>
           <View style={styles.authDividerLine} />
         </View>
+
+        {mode === 'signup' && (
+          <>
+            <View style={styles.fakeInput}>
+              <Text style={styles.fakeInputLabel}>Display name</Text>
+              <TextInput value={displayName} onChangeText={setDisplayName} style={styles.authInput} />
+            </View>
+            {showValidation && displayName.trim().length < 2 && (
+              <Text style={styles.authError}>Display name must be at least 2 characters.</Text>
+            )}
+            <View style={styles.fakeInput}>
+              <Text style={styles.fakeInputLabel}>Username</Text>
+              <TextInput
+                value={username}
+                onChangeText={setUsername}
+                autoCapitalize="none"
+                style={styles.authInput}
+              />
+            </View>
+            {showValidation && !isUsernameValid && (
+              <Text style={styles.authError}>Use 3-24 letters, numbers, or underscores.</Text>
+            )}
+          </>
+        )}
 
         <View style={styles.fakeInput}>
           <Text style={styles.fakeInputLabel}>Email</Text>

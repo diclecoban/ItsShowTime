@@ -4,6 +4,7 @@ import {
   CalendarDays,
   Check,
   Library,
+  Lock,
   ListPlus,
   MessageCircle,
   Plus,
@@ -18,7 +19,7 @@ import {
   Zap,
   UserRound,
 } from 'lucide-react';
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { ImageBackground, Pressable, ScrollView, Text, TextInput, View } from 'react-native';
 
 import { EmptyState, FilterChips, MiniStat, ProgressRail, SettingRow } from '../components';
@@ -44,19 +45,20 @@ export function SearchPage({
   selectedGenres,
   selectedServices,
   onToggleResult,
+  onSearch,
 }: {
   onBack: () => void;
   results: SearchResult[];
   selectedGenres: string[];
   selectedServices: string[];
-  onToggleResult: (title: string) => void;
+  onToggleResult: (title: string) => void | Promise<void>;
+  onSearch?: (query: string, type: 'All' | 'Shows' | 'Movies' | 'People') => void;
 }) {
   const filters = ['All', 'Shows', 'Movies', 'People'];
-  const recent = ['Severance', 'Dark comedy', 'Limited series'];
   const suggestions = [
     { label: 'Because you track workplace chaos', query: 'Slow Horses' },
-    { label: 'New on your platforms', query: 'Apple TV+' },
-    { label: 'Short seasons under 6h', query: 'Limited series' },
+    { label: 'Try a comfort comedy', query: 'Abbott Elementary' },
+    { label: 'Find a limited series', query: 'Chernobyl' },
   ];
   const [query, setQuery] = useState('');
   const [activeFilter, setActiveFilter] = useState('All');
@@ -64,6 +66,14 @@ export function SearchPage({
   const [activePlatform, setActivePlatform] = useState('All');
   const [viewMode, setViewMode] = useState<'List' | 'Grid'>('List');
   const [selectedActor, setSelectedActor] = useState<SearchResult | null>(null);
+  const [addedTitle, setAddedTitle] = useState('');
+  const [isFeedbackLeaving, setIsFeedbackLeaving] = useState(false);
+
+  useEffect(() => {
+    const searchTimer = window.setTimeout(() => onSearch?.(query, activeFilter), 250);
+    return () => window.clearTimeout(searchTimer);
+  }, [activeFilter, onSearch, query]);
+
   const genreFilters = ['All', ...selectedGenres];
   const platformFilters = ['All', ...selectedServices];
   const normalizedQuery = query.trim().toLowerCase();
@@ -78,8 +88,17 @@ export function SearchPage({
     return matchesType && matchesGenre && matchesPlatform && matchesQuery;
   });
 
+  const addResult = (title: string) => {
+    Promise.resolve(onToggleResult(title)).then(() => {
+      setAddedTitle(title);
+      setIsFeedbackLeaving(false);
+      window.setTimeout(() => setIsFeedbackLeaving(true), 1600);
+      window.setTimeout(() => setAddedTitle(''), 2150);
+    });
+  };
+
   return (
-    <View>
+    <View style={styles.searchScreen}>
       <Pressable style={styles.detailBack} onPress={onBack}>
         <ArrowLeft color={ink} size={20} />
         <Text style={styles.detailBackText}>Back</Text>
@@ -90,11 +109,23 @@ export function SearchPage({
         <TextInput
           value={query}
           onChangeText={setQuery}
-          placeholder="Search shows, movies, actors..."
+          placeholder="Search shows..."
           placeholderTextColor={muted}
           style={styles.searchInput}
         />
       </View>
+
+      {addedTitle && (
+        <View style={[styles.searchFeedbackOverlay, isFeedbackLeaving && styles.searchFeedbackOverlayLeaving]}>
+          <View style={[styles.searchFeedback, isFeedbackLeaving && styles.searchFeedbackLeaving]}>
+            <View style={styles.searchFeedbackIcon}>
+              <Check color={bg} size={26} strokeWidth={3} />
+            </View>
+            <Text style={styles.searchFeedbackTitle}>Added to Library</Text>
+            <Text style={styles.searchFeedbackText}>{addedTitle}</Text>
+          </View>
+        </View>
+      )}
 
       <View style={styles.searchSuggestionPanel}>
         {suggestions.map((suggestion) => (
@@ -122,23 +153,6 @@ export function SearchPage({
             <Text style={[styles.platformFilterText, activePlatform === platform && styles.platformFilterTextActive]}>
               {platform}
             </Text>
-          </Pressable>
-        ))}
-      </View>
-
-      <Text style={styles.sectionTitle}>Recent searches</Text>
-      <View style={styles.recentSearches}>
-        {recent.map((item) => (
-          <Text key={item} style={styles.recentChip}>{item}</Text>
-        ))}
-      </View>
-
-      <Text style={styles.sectionTitle}>Trending searches</Text>
-      <View style={styles.trendingSearches}>
-        {['Slow Horses', 'Apple TV+', 'Arrival', 'Adam Scott'].map((item, index) => (
-          <Pressable key={item} style={styles.trendingChip} onPress={() => setQuery(item)}>
-            <Text style={styles.trendingRank}>#{index + 1}</Text>
-            <Text style={styles.trendingText}>{item}</Text>
           </Pressable>
         ))}
       </View>
@@ -176,7 +190,7 @@ export function SearchPage({
         <EmptyState
           icon={Search}
           title={`No ${activeFilter.toLowerCase()} found`}
-          body="Try a broader filter or search by another title, actor, or platform."
+          body={activeFilter === 'Movies' ? 'Movie search will open once Watchlight has enough budget for broader catalog access.' : 'Try a broader filter or search by another title, actor, or platform.'}
           action="Clear filter"
         />
       ) : (
@@ -196,14 +210,28 @@ export function SearchPage({
               <View style={styles.searchResultCopy}>
                 <Text style={styles.searchResultTitle}>{result.title}</Text>
                 <Text style={styles.searchResultMeta}>{result.meta}</Text>
-                {result.platform && <Text style={styles.platformPill}>{result.platform}</Text>}
+                {result.type === 'Movies' ? (
+                  <View style={styles.searchPremiumPill}>
+                    <Lock color={gold} size={12} />
+                    <Text style={styles.searchPremiumText}>Awaiting catalog budget</Text>
+                  </View>
+                ) : (
+                  result.platform && <Text style={styles.platformPill}>{result.platform}</Text>
+                )}
               </View>
               <Pressable
-                style={[styles.searchAddButton, result.status === 'In library' && styles.searchAddedButton]}
-                onPress={() => onToggleResult(result.title)}
+                style={[
+                  styles.searchAddButton,
+                  result.status === 'In library' && styles.searchAddedButton,
+                  result.type === 'Movies' && styles.searchLockedButton,
+                ]}
+                onPress={() => addResult(result.title)}
+                disabled={result.type === 'Movies'}
               >
                 {result.status === 'In library' ? (
                   <Check color={bg} size={18} strokeWidth={3} />
+                ) : result.type === 'Movies' ? (
+                  <Lock color={bg} size={16} strokeWidth={3} />
                 ) : (
                   <Plus color={bg} size={18} strokeWidth={3} />
                 )}

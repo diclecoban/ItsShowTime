@@ -53,11 +53,23 @@ export function OnboardingPage({
   onToggleGenre: (genre: string) => void;
   onToggleService: (service: string) => void;
   onToggleStarterShow: (title: string) => void;
-  onFinish: () => void;
+  onFinish: () => Promise<void> | void;
 }) {
   const starterShows = ['Severance', 'The Bear', 'Dark', 'Slow Horses', 'Station Eleven', 'Past Lives'];
   const services = ['Netflix', 'Apple TV+', 'Max', 'Hulu'];
   const genres = ['Drama', 'Mystery', 'Comedy', 'Sci-fi', 'Thriller', 'Limited'];
+  const [isSaving, setIsSaving] = useState(false);
+  const [saveError, setSaveError] = useState('');
+
+  const finish = () => {
+    setIsSaving(true);
+    setSaveError('');
+    Promise.resolve(onFinish())
+      .catch((error: unknown) => {
+        setSaveError(error instanceof Error ? error.message : 'Preferences could not be saved.');
+      })
+      .finally(() => setIsSaving(false));
+  };
 
   return (
     <ScrollView contentContainerStyle={styles.onboarding} showsVerticalScrollIndicator={false}>
@@ -123,9 +135,10 @@ export function OnboardingPage({
         </View>
       </View>
 
-      <Pressable style={styles.onboardingButton} onPress={onFinish}>
+      {saveError && <Text style={styles.authError}>{saveError}</Text>}
+      <Pressable style={[styles.onboardingButton, isSaving && styles.authPrimaryButtonDisabled]} onPress={finish} disabled={isSaving}>
         <Check color={bg} size={20} strokeWidth={3} />
-        <Text style={styles.onboardingButtonText}>Start tracking</Text>
+        <Text style={styles.onboardingButtonText}>{isSaving ? 'Saving...' : 'Start tracking'}</Text>
       </Pressable>
     </ScrollView>
   );

@@ -21,6 +21,8 @@ export function usePreferences() {
     selectedGenres,
     selectedServices,
     setActiveTheme,
+    setSelectedGenres,
+    setSelectedServices,
     toggleGenre: (genre: string) => setSelectedGenres((genres) => toggleValue(genres, genre)),
     toggleService: (service: string) => setSelectedServices((services) => toggleValue(services, service)),
   };

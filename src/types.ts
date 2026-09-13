@@ -48,6 +48,8 @@ export type SearchResult = {
   status: 'Add' | 'In library';
   type: 'Shows' | 'Movies' | 'People';
   image: string;
+  source?: 'local' | 'tmdb' | 'tvmaze';
+  tmdbId?: number;
 };
 
 export type LibraryShow = {
@@ -100,4 +102,19 @@ export type NotificationItem = {
   unread: boolean;
   icon: LucideIcon;
   tone: string;
+};
+
+export type CommunityComment = {
+  id: string;
+  user: string;
+  mood: string;
+  text: string;
+  likes: number;
+};
+
+export type RecentActivity = {
+  id: string;
+  title: string;
+  subtitle: string;
+  time: string;
 };

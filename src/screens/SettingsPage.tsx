@@ -19,7 +19,7 @@ import {
   UserRound,
 } from 'lucide-react';
 import { useState } from 'react';
-import { ImageBackground, Pressable, ScrollView, Text, TextInput, View } from 'react-native';
+import { ImageBackground, Modal, Pressable, ScrollView, Text, TextInput, View } from 'react-native';
 
 import { EmptyState, FilterChips, MiniStat, ProgressRail, SettingRow } from '../components';
 import { achievements, comments, discoveries, favoriteShows, movies } from '../data';
@@ -40,6 +40,10 @@ import type {
 
 export function SettingsPage({
   onBack,
+  onSignOut,
+  onDeleteAccount,
+  displayName,
+  email,
   activeTheme,
   selectedGenres,
   selectedServices,
@@ -48,6 +52,10 @@ export function SettingsPage({
   onToggleService,
 }: {
   onBack: () => void;
+  onSignOut: () => Promise<void>;
+  onDeleteAccount: () => Promise<void>;
+  displayName: string;
+  email: string;
   activeTheme: keyof typeof themes;
   selectedGenres: string[];
   selectedServices: string[];
@@ -56,6 +64,35 @@ export function SettingsPage({
   onToggleService: (service: string) => void;
 }) {
   const genres = ['Drama', 'Mystery', 'Comedy', 'Sci-fi', 'Thriller', 'Limited'];
+  const [isSigningOut, setIsSigningOut] = useState(false);
+  const [isDeleteModalOpen, setIsDeleteModalOpen] = useState(false);
+  const [isDeleting, setIsDeleting] = useState(false);
+  const [deleteError, setDeleteError] = useState('');
+
+  const handleSignOut = () => {
+    setIsSigningOut(true);
+    onSignOut().finally(() => setIsSigningOut(false));
+  };
+
+  const handleDeleteAccount = () => {
+    setIsDeleting(true);
+    setDeleteError('');
+    onDeleteAccount()
+      .catch((error: unknown) => {
+        if (error instanceof Error) {
+          setDeleteError(error.message);
+          return;
+        }
+
+        if (typeof error === 'object' && error && 'message' in error && typeof error.message === 'string') {
+          setDeleteError(error.message);
+          return;
+        }
+
+        setDeleteError('Account deletion could not be requested.');
+      })
+      .finally(() => setIsDeleting(false));
+  };
 
   return (
     <View>
@@ -69,16 +106,14 @@ export function SettingsPage({
           <UserRound color={bg} size={32} />
         </View>
         <View style={styles.settingsHeroCopy}>
-          <Text style={styles.settingsName}>Dicle</Text>
-          <Text style={styles.settingsEmail}>dicle@example.com</Text>
+          <Text style={styles.settingsName}>{displayName}</Text>
+          <Text style={styles.settingsEmail}>{email}</Text>
         </View>
       </View>
 
       <Text style={styles.sectionTitle}>Preferences</Text>
       <View style={styles.settingsGroup}>
         <SettingRow title="Spoiler protection" value="Strict" active />
-        <SettingRow title="Region" value="United States" />
-        <SettingRow title="Language" value="English" />
       </View>
 
       <Text style={styles.sectionTitle}>Theme palettes</Text>
@@ -134,6 +169,39 @@ export function SettingsPage({
         <SettingRow title="Import watch history" value="CSV, JSON, Trakt" />
         <SettingRow title="Export backup" value="Ready" active />
       </View>
+
+      <Pressable style={styles.signOutButton} onPress={handleSignOut} disabled={isSigningOut}>
+        <Text style={styles.signOutText}>{isSigningOut ? 'Signing out...' : 'Sign out'}</Text>
+      </Pressable>
+
+      <Pressable style={styles.deleteAccountButton} onPress={() => setIsDeleteModalOpen(true)}>
+        <Text style={styles.deleteAccountText}>Delete account</Text>
+      </Pressable>
+
+      <Modal visible={isDeleteModalOpen} transparent animationType="fade" onRequestClose={() => setIsDeleteModalOpen(false)}>
+        <View style={styles.modalOverlay}>
+          <View style={styles.confirmModal}>
+            <Text style={styles.confirmTitle}>Delete account?</Text>
+            <Text style={styles.confirmBody}>
+              This will request permanent deletion and sign you out. Your watch history, lists, comments, and preferences
+              will be removed after the request is processed.
+            </Text>
+            {deleteError && <Text style={styles.authError}>{deleteError}</Text>}
+            <View style={styles.confirmActions}>
+              <Pressable
+                style={styles.confirmCancelButton}
+                onPress={() => setIsDeleteModalOpen(false)}
+                disabled={isDeleting}
+              >
+                <Text style={styles.confirmCancelText}>Cancel</Text>
+              </Pressable>
+              <Pressable style={styles.confirmDeleteButton} onPress={handleDeleteAccount} disabled={isDeleting}>
+                <Text style={styles.confirmDeleteText}>{isDeleting ? 'Deleting...' : 'Delete'}</Text>
+              </Pressable>
+            </View>
+          </View>
+        </View>
+      </Modal>
     </View>
   );
 }
