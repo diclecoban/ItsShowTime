@@ -1,4 +1,4 @@
--- Watchlight Supabase/Postgres schema
+-- It’s Showtime Supabase/Postgres schema
 -- Run this in the Supabase SQL editor after creating a project.
 
 create extension if not exists "pgcrypto";

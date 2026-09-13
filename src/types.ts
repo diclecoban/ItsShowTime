@@ -17,7 +17,10 @@ export type Episode = {
 };
 
 export type DetailEpisode = {
+  id?: string;
   code: string;
+  fullCode?: string;
+  seasonNumber?: number;
   title: string;
   watched: boolean;
   averageRating: number;
@@ -25,7 +28,17 @@ export type DetailEpisode = {
 
 export type ShowSeason = {
   season: string;
+  seasonNumber?: number;
   episodes: DetailEpisode[];
+};
+
+export type ShowDetailInfo = {
+  title: string;
+  overview: string;
+  status: string;
+  posterUrl: string;
+  backdropUrl?: string | null;
+  averageRating: number;
 };
 
 export type Movie = {
@@ -49,6 +62,18 @@ export type SearchResult = {
   type: 'Shows' | 'Movies' | 'People';
   image: string;
   source?: 'local' | 'tmdb' | 'tvmaze';
+  tmdbId?: number;
+};
+
+export type DiscoverItem = {
+  title: string;
+  meta: string;
+  body: string;
+  reason: string;
+  match: string;
+  fit: string[];
+  image: string;
+  source?: 'tvmaze';
   tmdbId?: number;
 };
 
@@ -117,4 +142,11 @@ export type RecentActivity = {
   title: string;
   subtitle: string;
   time: string;
+};
+
+export type EpisodeReaction = {
+  rating: number;
+  mood: string;
+  favoriteCharacter: string;
+  note: string;
 };

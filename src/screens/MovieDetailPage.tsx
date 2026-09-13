@@ -1,42 +1,11 @@
-import {
-  ArrowLeft,
-  Bell,
-  CalendarDays,
-  Check,
-  Library,
-  ListPlus,
-  MessageCircle,
-  Plus,
-  Play,
-  RotateCcw,
-  Search,
-  Settings,
-  Sparkles,
-  Star,
-  Tv,
-  X,
-  Zap,
-  UserRound,
-} from 'lucide-react';
+import { ArrowLeft, Check, MessageCircle, Plus, Sparkles, Star } from 'lucide-react';
 import { useState } from 'react';
-import { ImageBackground, Pressable, ScrollView, Text, TextInput, View } from 'react-native';
+import { ImageBackground, Pressable, Text, View } from 'react-native';
 
-import { EmptyState, FilterChips, MiniStat, ProgressRail, SettingRow } from '../components';
-import { achievements, comments, discoveries, favoriteShows, movies } from '../data';
-import { accent, bg, gold, ink, muted, themes } from '../theme';
+import { MiniStat } from '../components';
+import { accent, bg, gold, ink, muted } from '../theme';
 import { styles } from '../styles';
-import type {
-  CommunityContext,
-  CustomList,
-  DetailEpisode,
-  Episode,
-  LibraryShow,
-  Movie,
-  NotificationItem,
-  SearchResult,
-  ShowSeason,
-  UpcomingGroup,
-} from '../types';
+import type { CustomList, Movie } from '../types';
 
 export function MovieDetailPage({
   movie,

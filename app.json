@@ -1,7 +1,7 @@
 {
   "expo": {
-    "name": "TvTime",
-    "slug": "TvTime",
+    "name": "It’s Showtime",
+    "slug": "itsshowtime",
     "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/icon.png",

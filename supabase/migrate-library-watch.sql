@@ -1,4 +1,4 @@
--- Run once on an existing Watchlight database before testing Library/Watch backend writes.
+-- Run once on an existing It’s Showtime database before testing Library/Watch backend writes.
 
 alter table public.user_library_items
 add column if not exists target_id uuid generated always as (coalesce(show_id, movie_id)) stored;

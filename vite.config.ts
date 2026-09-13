@@ -4,6 +4,21 @@ import { defineConfig } from 'vite';
 
 export default defineConfig({
   plugins: [react()],
+  build: {
+    rollupOptions: {
+      output: {
+        manualChunks(id) {
+          if (!id.includes('node_modules')) return undefined;
+          if (id.includes('@supabase')) return 'vendor-supabase';
+          if (id.includes('react-native-web')) return 'vendor-react-native-web';
+          if (id.includes('react-router-dom') || id.includes('@remix-run')) return 'vendor-router';
+          if (id.includes('lucide-react')) return 'vendor-icons';
+          if (id.includes('react') || id.includes('scheduler')) return 'vendor-react';
+          return 'vendor';
+        },
+      },
+    },
+  },
   resolve: {
     alias: [
       { find: /^react-native$/, replacement: 'react-native-web' },

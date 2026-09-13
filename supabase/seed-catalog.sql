@@ -1,4 +1,4 @@
--- Minimal catalog seed for the current Watchlight prototype.
+-- Minimal catalog seed for the current It’s Showtime prototype.
 -- Run after schema.sql so Search, Library, and Mark watched can resolve real ids.
 
 insert into public.shows (title, overview, poster_url, status, average_rating)

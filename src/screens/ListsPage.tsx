@@ -1,42 +1,11 @@
-import {
-  ArrowLeft,
-  Bell,
-  CalendarDays,
-  Check,
-  Library,
-  ListPlus,
-  MessageCircle,
-  Plus,
-  Play,
-  RotateCcw,
-  Search,
-  Settings,
-  Sparkles,
-  Star,
-  Tv,
-  X,
-  Zap,
-  UserRound,
-} from 'lucide-react';
+import { ArrowLeft, CalendarDays, ListPlus, Plus, Star } from 'lucide-react';
 import { useState } from 'react';
-import { ImageBackground, Pressable, ScrollView, Text, TextInput, View } from 'react-native';
+import { ImageBackground, Pressable, Text, TextInput, View } from 'react-native';
 
-import { EmptyState, FilterChips, MiniStat, ProgressRail, SettingRow } from '../components';
-import { achievements, comments, discoveries, favoriteShows, movies } from '../data';
-import { accent, bg, gold, ink, muted, themes } from '../theme';
+import { EmptyState } from '../components';
+import { accent, bg, gold, ink, muted } from '../theme';
 import { styles } from '../styles';
-import type {
-  CommunityContext,
-  CustomList,
-  DetailEpisode,
-  Episode,
-  LibraryShow,
-  Movie,
-  NotificationItem,
-  SearchResult,
-  ShowSeason,
-  UpcomingGroup,
-} from '../types';
+import type { CustomList } from '../types';
 
 export function ListsPage({
   lists,
@@ -59,7 +28,7 @@ export function ListsPage({
       title,
       count: '0 titles',
       privacy: 'Private',
-      images: [favoriteShows[0].image, favoriteShows[1].image, movies[0].image],
+      images: [],
       items: [],
     });
     setSelectedList(null);
@@ -186,27 +155,13 @@ export function ListsPage({
       <View style={styles.listQuickRow}>
         <View style={styles.quickListTile}>
           <Star color={gold} fill={gold} size={24} />
-          <Text style={styles.quickListValue}>36</Text>
-          <Text style={styles.quickListLabel}>Favorites</Text>
+          <Text style={styles.quickListValue}>{lists.reduce((count, list) => count + (list.items?.length ?? 0), 0)}</Text>
+          <Text style={styles.quickListLabel}>Saved titles</Text>
         </View>
         <View style={styles.quickListTile}>
           <CalendarDays color={accent} size={24} />
-          <Text style={styles.quickListValue}>18</Text>
-          <Text style={styles.quickListLabel}>Watch later</Text>
-        </View>
-      </View>
-
-      <View style={styles.socialListPulse}>
-        <View style={styles.socialAvatarStack}>
-          {['D', 'M', 'L'].map((initial, index) => (
-            <View key={initial} style={[styles.socialAvatar, { marginLeft: index === 0 ? 0 : -10 }]}>
-              <Text style={styles.socialAvatarText}>{initial}</Text>
-            </View>
-          ))}
-        </View>
-        <View style={styles.socialListCopy}>
-          <Text style={styles.socialListTitle}>3 friends updated lists today</Text>
-          <Text style={styles.socialListBody}>Mara added Arrival to Mind-bending nights.</Text>
+          <Text style={styles.quickListValue}>{lists.filter((list) => list.privacy === 'Public').length}</Text>
+          <Text style={styles.quickListLabel}>Public lists</Text>
         </View>
       </View>
 
@@ -223,7 +178,7 @@ export function ListsPage({
           {lists.map((list) => (
           <Pressable key={list.title} style={styles.customListCard} onPress={() => setSelectedList(list)}>
             <View style={styles.listPosterStack}>
-              {list.images.map((image, index) => (
+              {list.images.length ? list.images.map((image, index) => (
                 <ImageBackground
                   key={`${list.title}-${index}`}
                   source={{ uri: image }}
@@ -231,7 +186,11 @@ export function ListsPage({
                   imageStyle={styles.listPosterSliceImage}
                   resizeMode="cover"
                 />
-              ))}
+              )) : (
+                <View style={styles.listPosterSlice}>
+                  <ListPlus color={gold} size={24} />
+                </View>
+              )}
             </View>
             <View style={styles.customListCopy}>
               <Text style={styles.customListTitle}>{list.title}</Text>

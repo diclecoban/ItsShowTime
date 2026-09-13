@@ -4,6 +4,7 @@ import { ImageBackground, Pressable, Text, View } from 'react-native';
 import type { StyleProp, ViewStyle } from 'react-native';
 
 import { accent, bg, ink } from './theme';
+import { useResponsive } from './hooks/useResponsive';
 import { styles } from './styles';
 import type { Episode } from './types';
 
@@ -16,11 +17,13 @@ export function ScreenHeader({
   onOpenNotifications: () => void;
   onOpenSearch: () => void;
 }) {
+  const { isCompact, isDesktop } = useResponsive();
+
   return (
-    <View style={styles.header}>
+    <View style={[styles.header, isCompact && styles.headerCompact, isDesktop && styles.headerDesktop]}>
       <View>
-        <Text style={styles.eyebrow}>Watchlight</Text>
-        <Text style={styles.title}>{title}</Text>
+        <Text style={styles.eyebrow}>It’s Showtime</Text>
+        <Text style={[styles.title, isCompact && styles.titleCompact]}>{title}</Text>
       </View>
       <View style={styles.headerActions}>
         <Pressable style={styles.iconButton} onPress={onOpenSearch}>
@@ -86,12 +89,14 @@ export function MediaCard({
 }
 
 export function EpisodeCard({ episode, onPress }: { episode: Episode; onPress: () => void }) {
+  const { isCompact } = useResponsive();
+
   return (
-    <MediaCard image={episode.image} style={styles.episodeCard} onPress={onPress}>
-      <View style={styles.episodeBody}>
+    <MediaCard image={episode.image} style={[styles.episodeCard, isCompact && styles.episodeCardCompact]} onPress={onPress}>
+      <View style={[styles.episodeBody, isCompact && styles.episodeBodyCompact]}>
         <Text style={styles.pill}>{episode.show}</Text>
         <Text style={styles.code}>{episode.code}</Text>
-        <Text style={styles.episodeTitle}>{episode.title}</Text>
+        <Text style={[styles.episodeTitle, isCompact && styles.episodeTitleCompact]}>{episode.title}</Text>
         <ProgressRail watched={episode.watchedEpisodes} total={episode.totalEpisodes} progress={episode.progress} />
         <View style={styles.cardFooter}>
           <Text style={styles.cardTag}>{episode.tag}</Text>
@@ -100,7 +105,7 @@ export function EpisodeCard({ episode, onPress }: { episode: Episode; onPress: (
           </Text>
         </View>
       </View>
-      <View style={[styles.checkCircle, episode.watched && styles.checkCircleDone]}>
+      <View style={[styles.checkCircle, isCompact && styles.checkCircleCompact, episode.watched && styles.checkCircleDone]}>
         <Check color={episode.watched ? bg : ink} size={25} strokeWidth={3} />
       </View>
     </MediaCard>
@@ -196,10 +201,12 @@ export function NavItem({
   label: string;
   onPress: () => void;
 }) {
+  const { isDesktop } = useResponsive();
+
   return (
-    <Pressable style={styles.navItem} onPress={onPress}>
+    <Pressable style={[styles.navItem, isDesktop && styles.navItemDesktop, active && isDesktop && styles.navItemDesktopActive]} onPress={onPress}>
       <Icon color={active ? accent : '#71808a'} size={24} strokeWidth={active ? 2.8 : 2} />
-      <Text style={[styles.navLabel, active && styles.navLabelActive]}>{label}</Text>
+      <Text style={[styles.navLabel, isDesktop && styles.navLabelDesktop, active && styles.navLabelActive]}>{label}</Text>
     </Pressable>
   );
 }

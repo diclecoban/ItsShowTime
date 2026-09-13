@@ -1,42 +1,10 @@
-import {
-  ArrowLeft,
-  Bell,
-  CalendarDays,
-  Check,
-  Library,
-  ListPlus,
-  MessageCircle,
-  Plus,
-  Play,
-  RotateCcw,
-  Search,
-  Settings,
-  Sparkles,
-  Star,
-  Tv,
-  X,
-  Zap,
-  UserRound,
-} from 'lucide-react';
+import { ArrowLeft, Check, MessageCircle, Star } from 'lucide-react';
 import { useState } from 'react';
-import { ImageBackground, Pressable, ScrollView, Text, TextInput, View } from 'react-native';
+import { ImageBackground, Pressable, Text, TextInput, View } from 'react-native';
 
-import { EmptyState, FilterChips, MiniStat, ProgressRail, SettingRow } from '../components';
-import { achievements, comments, discoveries, favoriteShows, movies } from '../data';
-import { accent, bg, gold, ink, muted, themes } from '../theme';
+import { accent, bg, gold, ink, muted } from '../theme';
 import { styles } from '../styles';
-import type {
-  CommunityContext,
-  CustomList,
-  DetailEpisode,
-  Episode,
-  LibraryShow,
-  Movie,
-  NotificationItem,
-  SearchResult,
-  ShowSeason,
-  UpcomingGroup,
-} from '../types';
+import type { Episode, EpisodeReaction } from '../types';
 
 export function EpisodeReactionPage({
   episode,
@@ -46,11 +14,33 @@ export function EpisodeReactionPage({
 }: {
   episode: Episode;
   onBack: () => void;
-  onSave: () => void;
+  onSave: (reaction: EpisodeReaction) => void | Promise<void>;
   onOpenCommunity: () => void;
 }) {
   const feelings = ['Mind blown', 'Tense', 'Funny', 'Heavy', 'Confused', 'Loved it'];
   const characters = ['Mark', 'Helly', 'Irving', 'Dylan'];
+  const [rating, setRating] = useState(4);
+  const [selectedMood, setSelectedMood] = useState(feelings[0]);
+  const [favoriteCharacter, setFavoriteCharacter] = useState(characters[1]);
+  const [note, setNote] = useState('');
+  const [isSaving, setIsSaving] = useState(false);
+  const [saveMessage, setSaveMessage] = useState('');
+
+  const saveReaction = async () => {
+    if (isSaving) return;
+
+    setIsSaving(true);
+    setSaveMessage('');
+
+    try {
+      await onSave({ rating, mood: selectedMood, favoriteCharacter, note: note.trim() });
+      setSaveMessage('Reaction saved');
+    } catch (error) {
+      setSaveMessage(error instanceof Error ? error.message : 'Could not save reaction');
+    } finally {
+      setIsSaving(false);
+    }
+  };
 
   return (
     <View>
@@ -79,28 +69,48 @@ export function EpisodeReactionPage({
         <Text style={styles.reactionSectionLabel}>Your rating</Text>
         <View style={styles.reactionStars}>
           {[1, 2, 3, 4, 5].map((star) => (
-            <Star key={star} color={gold} fill={star <= 4 ? gold : 'transparent'} size={34} />
+            <Pressable key={star} onPress={() => setRating(star)}>
+              <Star color={gold} fill={star <= rating ? gold : 'transparent'} size={34} />
+            </Pressable>
           ))}
         </View>
       </View>
 
       <Text style={styles.sectionTitle}>Episode mood</Text>
       <View style={styles.reactionGrid}>
-        {feelings.map((feeling, index) => (
-          <Pressable key={feeling} style={[styles.reactionChip, index === 0 && styles.reactionChipActive]}>
-            <Text style={[styles.reactionChipText, index === 0 && styles.reactionChipActiveText]}>{feeling}</Text>
+        {feelings.map((feeling) => (
+          <Pressable
+            key={feeling}
+            style={[styles.reactionChip, selectedMood === feeling && styles.reactionChipActive]}
+            onPress={() => setSelectedMood(feeling)}
+          >
+            <Text style={[styles.reactionChipText, selectedMood === feeling && styles.reactionChipActiveText]}>{feeling}</Text>
           </Pressable>
         ))}
       </View>
 
       <Text style={styles.sectionTitle}>Favorite character</Text>
       <View style={styles.characterRow}>
-        {characters.map((character, index) => (
-          <Pressable key={character} style={[styles.characterPill, index === 1 && styles.characterPillActive]}>
-            <Text style={[styles.characterText, index === 1 && styles.characterTextActive]}>{character}</Text>
+        {characters.map((character) => (
+          <Pressable
+            key={character}
+            style={[styles.characterPill, favoriteCharacter === character && styles.characterPillActive]}
+            onPress={() => setFavoriteCharacter(character)}
+          >
+            <Text style={[styles.characterText, favoriteCharacter === character && styles.characterTextActive]}>{character}</Text>
           </Pressable>
         ))}
       </View>
+
+      <Text style={styles.sectionTitle}>Private note</Text>
+      <TextInput
+        style={styles.reactionNoteInput}
+        value={note}
+        onChangeText={setNote}
+        placeholder="What do you want to remember about this episode?"
+        placeholderTextColor={muted}
+        multiline
+      />
 
       <Text style={styles.sectionTitle}>Spoiler-safe comments</Text>
       <Pressable style={styles.commentsPreview} onPress={onOpenCommunity}>
@@ -111,9 +121,10 @@ export function EpisodeReactionPage({
         </View>
       </Pressable>
 
-      <Pressable style={styles.saveReactionButton} onPress={onSave}>
+      {saveMessage ? <Text style={styles.reactionSaveMessage}>{saveMessage}</Text> : null}
+      <Pressable style={[styles.saveReactionButton, isSaving && styles.commentSubmitDisabled]} onPress={saveReaction} disabled={isSaving}>
         <Check color={bg} size={20} strokeWidth={3} />
-        <Text style={styles.saveReactionText}>Save reaction</Text>
+        <Text style={styles.saveReactionText}>{isSaving ? 'Saving...' : 'Save reaction'}</Text>
       </Pressable>
     </View>
   );

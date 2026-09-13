@@ -1,42 +1,10 @@
-import {
-  ArrowLeft,
-  Bell,
-  CalendarDays,
-  Check,
-  Library,
-  ListPlus,
-  MessageCircle,
-  Plus,
-  Play,
-  RotateCcw,
-  Search,
-  Settings,
-  Sparkles,
-  Star,
-  Tv,
-  X,
-  Zap,
-  UserRound,
-} from 'lucide-react';
+import { ArrowLeft, UserRound } from 'lucide-react';
 import { useState } from 'react';
-import { ImageBackground, Modal, Pressable, ScrollView, Text, TextInput, View } from 'react-native';
+import { Modal, Pressable, Text, View } from 'react-native';
 
-import { EmptyState, FilterChips, MiniStat, ProgressRail, SettingRow } from '../components';
-import { achievements, comments, discoveries, favoriteShows, movies } from '../data';
-import { accent, bg, gold, ink, muted, themes } from '../theme';
+import { FilterChips, SettingRow } from '../components';
+import { bg, gold, ink, muted, themes } from '../theme';
 import { styles } from '../styles';
-import type {
-  CommunityContext,
-  CustomList,
-  DetailEpisode,
-  Episode,
-  LibraryShow,
-  Movie,
-  NotificationItem,
-  SearchResult,
-  ShowSeason,
-  UpcomingGroup,
-} from '../types';
 
 export function SettingsPage({
   onBack,

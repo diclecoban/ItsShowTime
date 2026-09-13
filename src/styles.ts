@@ -1,11 +1,25 @@
-import { StyleSheet } from 'react-native';
+import { Platform, StyleSheet } from 'react-native';
 
 import { accent, bg, gold, ink, muted, panel } from './theme';
+
+const shadowText = (shadow: string, color: string, height = 1, radius = 7) =>
+  Platform.select({
+    web: { textShadow: shadow },
+    default: {
+      textShadowColor: color,
+      textShadowOffset: { width: 0, height },
+      textShadowRadius: radius,
+    },
+  });
 
 export const styles = StyleSheet.create({
   safe: {
     flex: 1,
     backgroundColor: bg,
+    ...Platform.select({
+      web: { minHeight: '100vh' },
+      default: {},
+    }),
   },
   app: {
     alignSelf: 'center',
@@ -14,6 +28,19 @@ export const styles = StyleSheet.create({
     maxWidth: 760,
     width: '100%',
   },
+  appCompact: {
+    maxWidth: '100%',
+  },
+  appTablet: {
+    maxWidth: 900,
+  },
+  appDesktop: {
+    maxWidth: 1280,
+    ...Platform.select({
+      web: { minHeight: '100vh' },
+      default: {},
+    }),
+  },
   header: {
     alignItems: 'center',
     flexDirection: 'row',
@@ -21,6 +48,14 @@ export const styles = StyleSheet.create({
     paddingHorizontal: 18,
     paddingTop: 18,
     paddingBottom: 10,
+  },
+  headerCompact: {
+    paddingHorizontal: 12,
+  },
+  headerDesktop: {
+    paddingLeft: 148,
+    paddingRight: 28,
+    paddingTop: 34,
   },
   eyebrow: {
     color: accent,
@@ -36,8 +71,13 @@ export const styles = StyleSheet.create({
     letterSpacing: 0,
     marginTop: 3,
   },
+  titleCompact: {
+    fontSize: 22,
+    lineHeight: 27,
+  },
   headerActions: {
     flexDirection: 'row',
+    flexShrink: 0,
     gap: 10,
   },
   iconButton: {
@@ -53,11 +93,36 @@ export const styles = StyleSheet.create({
     paddingBottom: 102,
     paddingTop: 8,
   },
+  contentCompact: {
+    paddingHorizontal: 10,
+  },
+  contentDesktop: {
+    paddingBottom: 36,
+    paddingHorizontal: 28,
+    paddingLeft: 148,
+    paddingTop: 20,
+  },
+  routeFallback: {
+    alignItems: 'center',
+    flexGrow: 1,
+    justifyContent: 'center',
+    minHeight: 240,
+    padding: 22,
+  },
+  routeFallbackText: {
+    color: ink,
+    fontSize: 22,
+    fontWeight: '900',
+    marginTop: 8,
+  },
   onboarding: {
+    alignSelf: 'center',
     backgroundColor: bg,
     flexGrow: 1,
     justifyContent: 'center',
+    maxWidth: 760,
     padding: 22,
+    width: '100%',
   },
   onboardingBrand: {
     color: accent,
@@ -135,10 +200,27 @@ export const styles = StyleSheet.create({
     fontWeight: '900',
   },
   authPage: {
+    alignItems: 'center',
     backgroundColor: bg,
     flexGrow: 1,
     justifyContent: 'center',
     padding: 22,
+  },
+  authPageDesktop: {
+    alignItems: 'center',
+    flexDirection: 'row',
+    gap: 56,
+    justifyContent: 'center',
+    minHeight: 760,
+    paddingHorizontal: 64,
+    paddingTop: 56,
+  },
+  authIntro: {
+    maxWidth: 430,
+    width: '100%',
+  },
+  authIntroDesktop: {
+    maxWidth: 480,
   },
   authBrand: {
     color: accent,
@@ -153,6 +235,10 @@ export const styles = StyleSheet.create({
     lineHeight: 44,
     marginTop: 10,
   },
+  authTitleDesktop: {
+    fontSize: 58,
+    lineHeight: 62,
+  },
   authBody: {
     color: muted,
     fontSize: 16,
@@ -160,11 +246,25 @@ export const styles = StyleSheet.create({
     lineHeight: 23,
     marginTop: 12,
   },
+  authDesktopStats: {
+    flexDirection: 'row',
+    gap: 10,
+    marginTop: 28,
+  },
+  authFormColumn: {
+    maxWidth: 430,
+    width: '100%',
+  },
   authCard: {
     backgroundColor: panel,
     borderRadius: 8,
     marginTop: 26,
+    maxWidth: 430,
     padding: 14,
+    width: '100%',
+  },
+  authCardDesktop: {
+    marginTop: 0,
   },
   authProviderButton: {
     alignItems: 'center',
@@ -381,6 +481,32 @@ export const styles = StyleSheet.create({
     backgroundColor: panel,
     borderRadius: 8,
     padding: 14,
+  },
+  showListPanel: {
+    backgroundColor: panel,
+    borderColor: '#303428',
+    borderRadius: 8,
+    borderWidth: 1,
+    gap: 12,
+    marginBottom: 12,
+    padding: 14,
+  },
+  detailRetryButton: {
+    alignItems: 'center',
+    alignSelf: 'center',
+    backgroundColor: accent,
+    borderRadius: 8,
+    flexDirection: 'row',
+    gap: 8,
+    justifyContent: 'center',
+    marginTop: 12,
+    minHeight: 44,
+    paddingHorizontal: 16,
+  },
+  detailRetryText: {
+    color: bg,
+    fontSize: 13,
+    fontWeight: '900',
   },
   detailSmallLabel: {
     color: muted,
@@ -679,6 +805,10 @@ export const styles = StyleSheet.create({
     overflow: 'hidden',
     paddingRight: 12,
   },
+  episodeCardCompact: {
+    minHeight: 116,
+    paddingRight: 8,
+  },
   poster: {
     alignSelf: 'stretch',
     width: 104,
@@ -688,6 +818,9 @@ export const styles = StyleSheet.create({
     minWidth: 0,
     paddingHorizontal: 14,
     paddingVertical: 12,
+  },
+  episodeBodyCompact: {
+    paddingHorizontal: 10,
   },
   pill: {
     alignSelf: 'flex-start',
@@ -714,6 +847,10 @@ export const styles = StyleSheet.create({
     fontSize: 15,
     fontWeight: '600',
     marginTop: 3,
+  },
+  episodeTitleCompact: {
+    fontSize: 14,
+    lineHeight: 19,
   },
   progressRail: {
     backgroundColor: '#34392e',
@@ -768,8 +905,13 @@ export const styles = StyleSheet.create({
     borderRadius: 28,
     flexShrink: 0,
     height: 56,
+    marginLeft: 6,
     justifyContent: 'center',
     width: 56,
+  },
+  checkCircleCompact: {
+    height: 46,
+    width: 46,
   },
   checkCircleDone: {
     backgroundColor: accent,
@@ -816,6 +958,9 @@ export const styles = StyleSheet.create({
     height: 430,
     marginBottom: 14,
   },
+  heroQueueCompact: {
+    height: 370,
+  },
   heroQueueImage: {
     borderRadius: 8,
   },
@@ -849,26 +994,56 @@ export const styles = StyleSheet.create({
     fontSize: 34,
     fontWeight: '900',
     lineHeight: 38,
+    ...shadowText('0 2px 8px rgba(0,0,0,0.72)', 'rgba(0,0,0,0.72)', 2, 8),
+  },
+  heroTitleCompact: {
+    fontSize: 28,
+    lineHeight: 32,
   },
   heroMeta: {
+    alignSelf: 'flex-start',
+    backgroundColor: 'rgba(8,9,8,0.68)',
+    borderColor: 'rgba(247,249,242,0.26)',
+    borderRadius: 8,
+    borderWidth: 1,
     color: '#e8ecd9',
     fontSize: 15,
     fontWeight: '800',
     marginTop: 6,
+    overflow: 'hidden',
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    ...shadowText('0 1px 6px rgba(0,0,0,0.7)', 'rgba(0,0,0,0.7)', 1, 6),
   },
   heroBody: {
+    backgroundColor: 'rgba(8,9,8,0.66)',
+    borderColor: 'rgba(247,249,242,0.22)',
+    borderRadius: 8,
+    borderWidth: 1,
     color: ink,
     fontSize: 16,
     fontWeight: '600',
     lineHeight: 22,
     marginTop: 14,
+    overflow: 'hidden',
+    padding: 12,
+    ...shadowText('0 1px 7px rgba(0,0,0,0.78)', 'rgba(0,0,0,0.78)'),
   },
   heroReason: {
+    alignSelf: 'flex-start',
+    backgroundColor: 'rgba(8,9,8,0.76)',
+    borderColor: gold,
+    borderRadius: 8,
+    borderWidth: 1,
     color: gold,
     fontSize: 13,
     fontWeight: '800',
     lineHeight: 19,
     marginTop: 12,
+    overflow: 'hidden',
+    paddingHorizontal: 10,
+    paddingVertical: 7,
+    ...shadowText('0 1px 7px rgba(0,0,0,0.82)', 'rgba(0,0,0,0.82)'),
   },
   queueActions: {
     flexDirection: 'row',
@@ -899,13 +1074,20 @@ export const styles = StyleSheet.create({
   },
   nextRail: {
     flexDirection: 'row',
+    flexWrap: 'wrap',
     gap: 10,
+  },
+  nextRailCompact: {
+    flexDirection: 'column',
   },
   nextCard: {
     backgroundColor: panel,
     borderRadius: 8,
     flex: 1,
     overflow: 'hidden',
+  },
+  nextCardCompact: {
+    flex: undefined,
   },
   nextPoster: {
     height: 112,
@@ -1244,16 +1426,51 @@ export const styles = StyleSheet.create({
     position: 'absolute',
     right: 0,
   },
+  navDesktop: {
+    alignItems: 'stretch',
+    borderRightColor: '#20231d',
+    borderRightWidth: 1,
+    borderTopWidth: 0,
+    bottom: 0,
+    flexDirection: 'column',
+    gap: 12,
+    height: '100%',
+    justifyContent: 'flex-start',
+    left: 0,
+    paddingHorizontal: 8,
+    paddingTop: 126,
+    paddingVertical: 0,
+    right: undefined,
+    top: 0,
+    width: 116,
+  },
   navItem: {
     alignItems: 'center',
     gap: 5,
     justifyContent: 'center',
     minWidth: 64,
   },
+  navItemDesktop: {
+    alignItems: 'center',
+    borderRadius: 8,
+    flexDirection: 'row',
+    gap: 8,
+    height: 46,
+    justifyContent: 'flex-start',
+    minWidth: 0,
+    paddingHorizontal: 8,
+    width: '100%',
+  },
+  navItemDesktopActive: {
+    backgroundColor: '#11130f',
+  },
   navLabel: {
     color: '#71808a',
     fontSize: 11,
     fontWeight: '800',
+  },
+  navLabelDesktop: {
+    fontSize: 12,
   },
   navLabelActive: {
     color: accent,
@@ -1364,6 +1581,26 @@ export const styles = StyleSheet.create({
   characterTextActive: {
     color: bg,
   },
+  reactionNoteInput: {
+    backgroundColor: panel,
+    borderColor: '#303428',
+    borderRadius: 8,
+    borderWidth: 1,
+    color: ink,
+    fontSize: 14,
+    fontWeight: '700',
+    lineHeight: 20,
+    minHeight: 96,
+    padding: 12,
+    textAlignVertical: 'top',
+  },
+  reactionSaveMessage: {
+    color: gold,
+    fontSize: 12,
+    fontWeight: '900',
+    marginTop: 14,
+    textAlign: 'center',
+  },
   commentsPreview: {
     alignItems: 'center',
     backgroundColor: panel,
@@ -1433,6 +1670,72 @@ export const styles = StyleSheet.create({
   },
   commentList: {
     gap: 10,
+  },
+  commentComposer: {
+    backgroundColor: panel,
+    borderColor: '#303428',
+    borderRadius: 8,
+    borderWidth: 1,
+    gap: 10,
+    marginBottom: 18,
+    padding: 14,
+  },
+  commentInput: {
+    backgroundColor: '#11140f',
+    borderColor: '#34392e',
+    borderRadius: 8,
+    borderWidth: 1,
+    color: ink,
+    fontSize: 14,
+    fontWeight: '700',
+    minHeight: 92,
+    padding: 12,
+    textAlignVertical: 'top',
+  },
+  commentMoodRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 8,
+  },
+  commentMoodChip: {
+    backgroundColor: '#11140f',
+    borderColor: '#34392e',
+    borderRadius: 999,
+    borderWidth: 1,
+    color: muted,
+    fontSize: 12,
+    fontWeight: '900',
+    overflow: 'hidden',
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+  },
+  commentMoodChipActive: {
+    backgroundColor: gold,
+    borderColor: gold,
+    color: bg,
+  },
+  commentError: {
+    color: '#ff8a8a',
+    fontSize: 12,
+    fontWeight: '800',
+  },
+  commentSubmit: {
+    alignItems: 'center',
+    alignSelf: 'flex-start',
+    backgroundColor: accent,
+    borderRadius: 8,
+    flexDirection: 'row',
+    gap: 8,
+    minHeight: 42,
+    paddingHorizontal: 14,
+  },
+  commentSubmitDisabled: {
+    opacity: 0.45,
+  },
+  commentSubmitText: {
+    color: bg,
+    fontSize: 13,
+    fontWeight: '900',
   },
   commentCard: {
     backgroundColor: panel,
@@ -1798,6 +2101,7 @@ export const styles = StyleSheet.create({
   },
   searchResultCopy: {
     flex: 1,
+    minWidth: 0,
     paddingHorizontal: 12,
   },
   searchResultTitle: {
@@ -1936,9 +2240,15 @@ export const styles = StyleSheet.create({
     marginBottom: 10,
     overflow: 'hidden',
   },
+  upcomingCardCompact: {
+    minHeight: 96,
+  },
   upcomingPoster: {
     alignSelf: 'stretch',
     width: 82,
+  },
+  upcomingPosterCompact: {
+    width: 68,
   },
   upcomingPosterImage: {
     borderBottomLeftRadius: 8,
@@ -1946,7 +2256,11 @@ export const styles = StyleSheet.create({
   },
   upcomingCopy: {
     flex: 1,
+    minWidth: 0,
     paddingHorizontal: 12,
+  },
+  upcomingCopyCompact: {
+    paddingHorizontal: 10,
   },
   upcomingShow: {
     color: ink,
@@ -2064,9 +2378,15 @@ export const styles = StyleSheet.create({
     minHeight: 118,
     overflow: 'hidden',
   },
+  libraryCardCompact: {
+    minHeight: 108,
+  },
   libraryPoster: {
     alignSelf: 'stretch',
     width: 86,
+  },
+  libraryPosterCompact: {
+    width: 72,
   },
   libraryPosterImage: {
     borderBottomLeftRadius: 8,
@@ -2074,6 +2394,7 @@ export const styles = StyleSheet.create({
   },
   libraryCopy: {
     flex: 1,
+    minWidth: 0,
     justifyContent: 'center',
     padding: 12,
   },
@@ -2443,6 +2764,7 @@ export const styles = StyleSheet.create({
     borderRadius: 8,
     borderWidth: 1,
     flexDirection: 'row',
+    flexWrap: 'wrap',
     gap: 12,
     padding: 14,
     position: 'relative',
@@ -2470,6 +2792,7 @@ export const styles = StyleSheet.create({
   },
   notificationCopy: {
     flex: 1,
+    minWidth: 180,
   },
   notificationReadButton: {
     alignItems: 'center',

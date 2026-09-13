@@ -1,42 +1,10 @@
-import {
-  ArrowLeft,
-  Bell,
-  CalendarDays,
-  Check,
-  Library,
-  ListPlus,
-  MessageCircle,
-  Plus,
-  Play,
-  RotateCcw,
-  Search,
-  Settings,
-  Sparkles,
-  Star,
-  Tv,
-  X,
-  Zap,
-  UserRound,
-} from 'lucide-react';
+import { Check } from 'lucide-react';
 import { useState } from 'react';
-import { ImageBackground, Pressable, ScrollView, Text, TextInput, View } from 'react-native';
+import { Pressable, ScrollView, Text, View } from 'react-native';
 
-import { EmptyState, FilterChips, MiniStat, ProgressRail, SettingRow } from '../components';
-import { achievements, comments, discoveries, favoriteShows, movies } from '../data';
-import { accent, bg, gold, ink, muted, themes } from '../theme';
+import { SettingRow } from '../components';
+import { bg } from '../theme';
 import { styles } from '../styles';
-import type {
-  CommunityContext,
-  CustomList,
-  DetailEpisode,
-  Episode,
-  LibraryShow,
-  Movie,
-  NotificationItem,
-  SearchResult,
-  ShowSeason,
-  UpcomingGroup,
-} from '../types';
 
 export function OnboardingPage({
   selectedGenres,
@@ -73,7 +41,7 @@ export function OnboardingPage({
 
   return (
     <ScrollView contentContainerStyle={styles.onboarding} showsVerticalScrollIndicator={false}>
-      <Text style={styles.onboardingBrand}>Watchlight</Text>
+      <Text style={styles.onboardingBrand}>It’s Showtime</Text>
       <Text style={styles.onboardingTitle}>Build your watch home</Text>
       <Text style={styles.onboardingBody}>
         Pick a few titles and preferences so your next episodes, calendar, and recommendations feel ready from day one.

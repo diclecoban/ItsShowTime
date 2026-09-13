@@ -1,54 +1,45 @@
-import {
-  ArrowLeft,
-  Bell,
-  CalendarDays,
-  Check,
-  Library,
-  ListPlus,
-  MessageCircle,
-  Plus,
-  Play,
-  RotateCcw,
-  Search,
-  Settings,
-  Sparkles,
-  Star,
-  Tv,
-  X,
-  Zap,
-  UserRound,
-} from 'lucide-react';
+import { ArrowLeft, MessageCircle } from 'lucide-react';
 import { useState } from 'react';
-import { ImageBackground, Pressable, ScrollView, Text, TextInput, View } from 'react-native';
+import { ImageBackground, Pressable, Text, TextInput, View } from 'react-native';
 
-import { EmptyState, FilterChips, MiniStat, ProgressRail, SettingRow } from '../components';
-import { achievements, comments, discoveries, favoriteShows, movies } from '../data';
-import { accent, bg, gold, ink, muted, themes } from '../theme';
+import { EmptyState, MiniStat } from '../components';
+import { accent, bg, gold, ink, muted } from '../theme';
 import { styles } from '../styles';
-import type {
-  CommunityContext,
-  CommunityComment,
-  CustomList,
-  DetailEpisode,
-  Episode,
-  LibraryShow,
-  Movie,
-  NotificationItem,
-  SearchResult,
-  ShowSeason,
-  UpcomingGroup,
-} from '../types';
+import type { CommunityComment, CommunityContext } from '../types';
 
 export function CommunityPage({
   context,
   communityComments,
   onBack,
+  onSubmitComment,
 }: {
   context: CommunityContext;
   communityComments: CommunityComment[];
   onBack: () => void;
+  onSubmitComment: (body: string, mood: string) => Promise<void>;
 }) {
-  const visibleComments = communityComments.length ? communityComments : comments;
+  const moods = ['Reacted', 'Loved it', 'Shocked', 'Theory'];
+  const [body, setBody] = useState('');
+  const [mood, setMood] = useState(moods[0]);
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [error, setError] = useState('');
+
+  const submitComment = async () => {
+    const trimmedBody = body.trim();
+    if (!trimmedBody || isSubmitting) return;
+
+    setIsSubmitting(true);
+    setError('');
+
+    try {
+      await onSubmitComment(trimmedBody, mood);
+      setBody('');
+    } catch (commentError) {
+      setError(commentError instanceof Error ? commentError.message : 'Could not post this comment.');
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
 
   return (
     <View>
@@ -88,24 +79,59 @@ export function CommunityPage({
 
       {context.watched && (
         <>
-          <Text style={styles.sectionTitle}>Top comments</Text>
-          <View style={styles.commentList}>
-            {visibleComments.map((comment) => (
-              <View key={`${comment.user}-${comment.mood}`} style={styles.commentCard}>
-                <View style={styles.commentAvatar}>
-                  <Text style={styles.commentAvatarText}>{comment.user.slice(0, 1)}</Text>
-                </View>
-                <View style={styles.commentCopy}>
-                  <View style={styles.commentTop}>
-                    <Text style={styles.commentUser}>{comment.user}</Text>
-                    <Text style={styles.commentMood}>{comment.mood}</Text>
-                  </View>
-                  <Text style={styles.commentText}>{comment.text}</Text>
-                  <Text style={styles.commentLikes}>{comment.likes} likes</Text>
-                </View>
-              </View>
-            ))}
+          <View style={styles.commentComposer}>
+            <TextInput
+              style={styles.commentInput}
+              value={body}
+              onChangeText={setBody}
+              placeholder="Write your reaction..."
+              placeholderTextColor={muted}
+              multiline
+            />
+            <View style={styles.commentMoodRow}>
+              {moods.map((item) => (
+                <Pressable key={item} onPress={() => setMood(item)}>
+                  <Text style={[styles.commentMoodChip, mood === item && styles.commentMoodChipActive]}>{item}</Text>
+                </Pressable>
+              ))}
+            </View>
+            {error ? <Text style={styles.commentError}>{error}</Text> : null}
+            <Pressable
+              style={[styles.commentSubmit, (!body.trim() || isSubmitting) && styles.commentSubmitDisabled]}
+              onPress={submitComment}
+              disabled={!body.trim() || isSubmitting}
+            >
+              <MessageCircle color={bg} size={17} />
+              <Text style={styles.commentSubmitText}>{isSubmitting ? 'Posting...' : 'Post comment'}</Text>
+            </Pressable>
           </View>
+
+          <Text style={styles.sectionTitle}>Top comments</Text>
+          {communityComments.length ? (
+            <View style={styles.commentList}>
+              {communityComments.map((comment) => (
+                <View key={comment.id} style={styles.commentCard}>
+                  <View style={styles.commentAvatar}>
+                    <Text style={styles.commentAvatarText}>{comment.user.slice(0, 1)}</Text>
+                  </View>
+                  <View style={styles.commentCopy}>
+                    <View style={styles.commentTop}>
+                      <Text style={styles.commentUser}>{comment.user}</Text>
+                      <Text style={styles.commentMood}>{comment.mood}</Text>
+                    </View>
+                    <Text style={styles.commentText}>{comment.text}</Text>
+                    <Text style={styles.commentLikes}>{comment.likes} likes</Text>
+                  </View>
+                </View>
+              ))}
+            </View>
+          ) : (
+            <EmptyState
+              icon={MessageCircle}
+              title="No comments yet"
+              body="Be the first person to leave a spoiler-safe reaction here."
+            />
+          )}
         </>
       )}
     </View>

@@ -1,42 +1,10 @@
-import {
-  ArrowLeft,
-  Bell,
-  CalendarDays,
-  Check,
-  Library,
-  ListPlus,
-  MessageCircle,
-  Plus,
-  Play,
-  RotateCcw,
-  Search,
-  Settings,
-  Sparkles,
-  Star,
-  Tv,
-  X,
-  Zap,
-  UserRound,
-} from 'lucide-react';
-import { useState } from 'react';
-import { ImageBackground, Pressable, ScrollView, Text, TextInput, View } from 'react-native';
+import { Check, Library, Settings, Tv, UserRound, Zap } from 'lucide-react';
+import { ImageBackground, Pressable, Text, View } from 'react-native';
 
-import { EmptyState, FilterChips, MiniStat, ProgressRail, SettingRow } from '../components';
-import { accent, bg, gold, ink, muted, themes } from '../theme';
+import { EmptyState, MiniStat } from '../components';
+import { accent, bg, gold, ink, muted } from '../theme';
 import { styles } from '../styles';
-import type {
-  CommunityContext,
-  CustomList,
-  DetailEpisode,
-  Episode,
-  LibraryShow,
-  Movie,
-  NotificationItem,
-  RecentActivity,
-  SearchResult,
-  ShowSeason,
-  UpcomingGroup,
-} from '../types';
+import type { LibraryShow, RecentActivity } from '../types';
 
 export function ProfileDashboard({
   displayName,

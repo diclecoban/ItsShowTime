@@ -1,43 +1,12 @@
-import {
-  ArrowLeft,
-  Bell,
-  CalendarDays,
-  Check,
-  Library,
-  Lock,
-  ListPlus,
-  MessageCircle,
-  Plus,
-  Play,
-  RotateCcw,
-  Search,
-  Settings,
-  Sparkles,
-  Star,
-  Tv,
-  X,
-  Zap,
-  UserRound,
-} from 'lucide-react';
+import { ArrowLeft, Check, Lock, Plus, Search, Sparkles, Tv, X } from 'lucide-react';
 import { useEffect, useState } from 'react';
-import { ImageBackground, Pressable, ScrollView, Text, TextInput, View } from 'react-native';
+import { ImageBackground, Pressable, Text, TextInput, View } from 'react-native';
 
-import { EmptyState, FilterChips, MiniStat, ProgressRail, SettingRow } from '../components';
-import { achievements, comments, discoveries, favoriteShows, movies } from '../data';
-import { accent, bg, gold, ink, muted, themes } from '../theme';
+import { EmptyState, FilterChips } from '../components';
+import { bg, gold, ink, muted } from '../theme';
 import { styles } from '../styles';
-import type {
-  CommunityContext,
-  CustomList,
-  DetailEpisode,
-  Episode,
-  LibraryShow,
-  Movie,
-  NotificationItem,
-  SearchResult,
-  ShowSeason,
-  UpcomingGroup,
-} from '../types';
+import { useResponsive } from '../hooks/useResponsive';
+import type { SearchResult } from '../types';
 
 export function SearchPage({
   onBack,
@@ -45,6 +14,7 @@ export function SearchPage({
   selectedGenres,
   selectedServices,
   onToggleResult,
+  onSelectResult,
   onSearch,
 }: {
   onBack: () => void;
@@ -52,8 +22,10 @@ export function SearchPage({
   selectedGenres: string[];
   selectedServices: string[];
   onToggleResult: (title: string) => void | Promise<void>;
+  onSelectResult: (result: SearchResult) => void | Promise<void>;
   onSearch?: (query: string, type: 'All' | 'Shows' | 'Movies' | 'People') => void;
 }) {
+  const { isCompact } = useResponsive();
   const filters = ['All', 'Shows', 'Movies', 'People'];
   const suggestions = [
     { label: 'Because you track workplace chaos', query: 'Slow Horses' },
@@ -190,21 +162,28 @@ export function SearchPage({
         <EmptyState
           icon={Search}
           title={`No ${activeFilter.toLowerCase()} found`}
-          body={activeFilter === 'Movies' ? 'Movie search will open once Watchlight has enough budget for broader catalog access.' : 'Try a broader filter or search by another title, actor, or platform.'}
+          body={activeFilter === 'Movies' ? 'Movie search will open once It’s Showtime has enough budget for broader catalog access.' : 'Try a broader filter or search by another title, actor, or platform.'}
           action="Clear filter"
         />
       ) : (
-        <View style={viewMode === 'Grid' ? styles.searchGridResults : styles.searchResults}>
+        <View style={viewMode === 'Grid' && !isCompact ? styles.searchGridResults : styles.searchResults}>
           {filteredResults.map((result) => (
             <Pressable
               key={result.title}
-              style={viewMode === 'Grid' ? styles.searchGridCard : styles.searchResultCard}
-              onPress={() => result.type === 'People' && setSelectedActor(result)}
+              style={viewMode === 'Grid' && !isCompact ? styles.searchGridCard : styles.searchResultCard}
+              onPress={() => {
+                if (result.type === 'People') {
+                  setSelectedActor(result);
+                  return;
+                }
+
+                Promise.resolve(onSelectResult(result));
+              }}
             >
               <ImageBackground
                 source={{ uri: result.image }}
-                style={viewMode === 'Grid' ? styles.searchGridPoster : styles.searchPoster}
-                imageStyle={viewMode === 'Grid' ? styles.searchGridPosterImage : styles.searchPosterImage}
+                style={viewMode === 'Grid' && !isCompact ? styles.searchGridPoster : styles.searchPoster}
+                imageStyle={viewMode === 'Grid' && !isCompact ? styles.searchGridPosterImage : styles.searchPosterImage}
                 resizeMode="cover"
               />
               <View style={styles.searchResultCopy}>
@@ -225,7 +204,10 @@ export function SearchPage({
                   result.status === 'In library' && styles.searchAddedButton,
                   result.type === 'Movies' && styles.searchLockedButton,
                 ]}
-                onPress={() => addResult(result.title)}
+                onPress={(event) => {
+                  event.stopPropagation();
+                  addResult(result.title);
+                }}
                 disabled={result.type === 'Movies'}
               >
                 {result.status === 'In library' ? (

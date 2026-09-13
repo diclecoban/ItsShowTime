@@ -1,44 +1,23 @@
-import {
-  ArrowLeft,
-  Bell,
-  CalendarDays,
-  Check,
-  Library,
-  ListPlus,
-  MessageCircle,
-  Plus,
-  Play,
-  RotateCcw,
-  Search,
-  Settings,
-  Sparkles,
-  Star,
-  Tv,
-  X,
-  Zap,
-  UserRound,
-} from 'lucide-react';
+import { Library, ListPlus } from 'lucide-react';
 import { useState } from 'react';
-import { ImageBackground, Pressable, ScrollView, Text, TextInput, View } from 'react-native';
+import { ImageBackground, Pressable, Text, View } from 'react-native';
 
-import { EmptyState, FilterChips, MiniStat, ProgressRail, SettingRow } from '../components';
-import { achievements, comments, discoveries, favoriteShows, movies } from '../data';
-import { accent, bg, gold, ink, muted, themes } from '../theme';
+import { EmptyState, ProgressRail } from '../components';
+import { bg, gold, ink, muted } from '../theme';
 import { styles } from '../styles';
-import type {
-  CommunityContext,
-  CustomList,
-  DetailEpisode,
-  Episode,
-  LibraryShow,
-  Movie,
-  NotificationItem,
-  SearchResult,
-  ShowSeason,
-  UpcomingGroup,
-} from '../types';
+import { useResponsive } from '../hooks/useResponsive';
+import type { LibraryShow } from '../types';
 
-export function LibraryPage({ shows, onOpenLists }: { shows: LibraryShow[]; onOpenLists: () => void }) {
+export function LibraryPage({
+  shows,
+  onOpenLists,
+  onSelectShow,
+}: {
+  shows: LibraryShow[];
+  onOpenLists: () => void;
+  onSelectShow: (show: LibraryShow) => void;
+}) {
+  const { isCompact } = useResponsive();
   const filters = ['All', 'Watching', 'Paused', 'Finished', 'Dropped'];
   const [activeFilter, setActiveFilter] = useState('All');
   const filteredShows =
@@ -74,10 +53,10 @@ export function LibraryPage({ shows, onOpenLists }: { shows: LibraryShow[]; onOp
       ) : (
         <View style={styles.libraryList}>
           {filteredShows.map((show) => (
-            <View key={show.title} style={styles.libraryCard}>
+            <Pressable key={show.title} style={[styles.libraryCard, isCompact && styles.libraryCardCompact]} onPress={() => onSelectShow(show)}>
               <ImageBackground
                 source={{ uri: show.image }}
-                style={styles.libraryPoster}
+                style={[styles.libraryPoster, isCompact && styles.libraryPosterCompact]}
                 imageStyle={styles.libraryPosterImage}
                 resizeMode="cover"
               />
@@ -92,7 +71,7 @@ export function LibraryPage({ shows, onOpenLists }: { shows: LibraryShow[]; onOp
                 <ProgressRail watched={show.watchedEpisodes} total={show.totalEpisodes} progress={show.progress} />
                 <Text style={styles.libraryMeta}>{show.meta}</Text>
               </View>
-            </View>
+            </Pressable>
           ))}
         </View>
       )}

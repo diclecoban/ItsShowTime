@@ -1,43 +1,9 @@
-import {
-  ArrowLeft,
-  Bell,
-  CalendarDays,
-  Check,
-  Library,
-  Lock,
-  ListPlus,
-  MessageCircle,
-  Plus,
-  Play,
-  RotateCcw,
-  Search,
-  Settings,
-  Sparkles,
-  Star,
-  Tv,
-  X,
-  Zap,
-  UserRound,
-} from 'lucide-react';
-import { useState } from 'react';
-import { ImageBackground, Pressable, ScrollView, Text, TextInput, View } from 'react-native';
+import { Lock, Star } from 'lucide-react';
+import { ImageBackground, Pressable, Text, View } from 'react-native';
 
-import { EmptyState, FilterChips, MiniStat, ProgressRail, SettingRow } from '../components';
-import { achievements, comments, discoveries, favoriteShows, movies } from '../data';
-import { accent, bg, gold, ink, muted, themes } from '../theme';
+import { bg, gold, ink, muted } from '../theme';
 import { styles } from '../styles';
-import type {
-  CommunityContext,
-  CustomList,
-  DetailEpisode,
-  Episode,
-  LibraryShow,
-  Movie,
-  NotificationItem,
-  SearchResult,
-  ShowSeason,
-  UpcomingGroup,
-} from '../types';
+import type { Movie } from '../types';
 
 export function MoviesPage({ movies, onSelectMovie }: { movies: Movie[]; onSelectMovie: (movie: Movie) => void }) {
   return (
@@ -49,11 +15,11 @@ export function MoviesPage({ movies, onSelectMovie }: { movies: Movie[]; onSelec
         <Text style={styles.movieLockedTitle}>Movies are coming when the budget is ready</Text>
         <Text style={styles.movieLockedBody}>
           Series tracking is free while we keep building the catalog. A richer movie database, ratings, lists, and reactions
-          will unlock when Watchlight has the budget for broader data access.
+          will unlock when It’s Showtime has the budget for broader data access.
         </Text>
         <Pressable
           style={styles.supportUsButton}
-          onPress={() => window.open('https://www.buymeacoffee.com/diclesaracoban', '_blank', 'noopener,noreferrer')}
+          onPress={() => window.open('https://buymeacoffee.com/diclesara', '_blank', 'noopener,noreferrer')}
         >
           <Text style={styles.supportUsText}>Support us</Text>
         </Pressable>

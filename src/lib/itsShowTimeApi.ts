@@ -9,6 +9,7 @@ import {
   type TmdbSearchItem,
 } from './tmdb';
 import { getTvmazeEpisodes, searchTvmazeShows, type TvmazeShow } from './tvmaze';
+import type { CustomList, DiscoverItem, Episode, EpisodeReaction, LibraryShow, UpcomingGroup } from '../types';
 
 export function requireSupabase() {
   if (!supabase) {
@@ -171,6 +172,173 @@ export async function getLibraryItems(userId: string) {
   return data;
 }
 
+export async function getLibraryShows(userId: string): Promise<LibraryShow[]> {
+  const client = requireSupabase();
+  const { data: libraryItems, error } = await client
+    .from('user_library_items')
+    .select('id, status, shows(id, title, poster_url)')
+    .eq('user_id', userId)
+    .eq('media_type', 'show')
+    .order('updated_at', { ascending: false });
+
+  if (error) throw error;
+
+  const showRows = (libraryItems ?? [])
+    .map((item) => item.shows as { id: string; title: string; poster_url: string | null } | null)
+    .filter(Boolean) as Array<{ id: string; title: string; poster_url: string | null }>;
+  const showIds = showRows.map((show) => show.id);
+
+  if (!showIds.length) return [];
+
+  const { data: seasons, error: seasonsError } = await client
+    .from('seasons')
+    .select('id, show_id, season_number, episodes(id, episode_number, title)')
+    .in('show_id', showIds)
+    .order('season_number', { ascending: true });
+
+  if (seasonsError) throw seasonsError;
+
+  const episodeIds = (seasons ?? []).flatMap((season) =>
+    ((season.episodes as Array<{ id: string }> | null) ?? []).map((episode) => episode.id)
+  );
+  const watchedIds = new Set<string>();
+
+  if (episodeIds.length) {
+    const { data: progressRows, error: progressError } = await client
+      .from('episode_watch_progress')
+      .select('episode_id')
+      .eq('user_id', userId)
+      .eq('watched', true)
+      .in('episode_id', episodeIds);
+
+    if (progressError) throw progressError;
+    progressRows?.forEach((row) => watchedIds.add(row.episode_id));
+  }
+
+  return (libraryItems ?? [])
+    .filter((item) => item.shows)
+    .map((item) => {
+      const show = item.shows as { id: string; title: string; poster_url: string | null };
+      const showSeasons = (seasons ?? []).filter((season) => season.show_id === show.id);
+      const showEpisodes = showSeasons.flatMap((season) =>
+        ((season.episodes as Array<{ id: string; episode_number: number; title: string }> | null) ?? []).map((episode) => ({
+          ...episode,
+          seasonNumber: season.season_number,
+        }))
+      );
+      const watchedEpisodes = showEpisodes.filter((episode) => watchedIds.has(episode.id)).length;
+      const totalEpisodes = showEpisodes.length;
+      const nextEpisode = showEpisodes.find((episode) => !watchedIds.has(episode.id));
+      const progress = totalEpisodes ? Math.round((watchedEpisodes / totalEpisodes) * 100) : 0;
+      const status =
+        item.status === 'finished'
+          ? 'Finished'
+          : item.status === 'paused'
+            ? 'Paused'
+            : item.status === 'dropped'
+              ? 'Dropped'
+              : 'Watching';
+
+      return {
+        title: show.title,
+        status: progress === 100 && totalEpisodes > 0 ? 'Finished' : status,
+        progress,
+        watchedEpisodes,
+        totalEpisodes,
+        next: nextEpisode
+          ? `S${String(nextEpisode.seasonNumber).padStart(2, '0')} | E${String(nextEpisode.episode_number).padStart(2, '0')}`
+          : totalEpisodes
+            ? 'Finished'
+            : 'Importing episodes',
+        meta: totalEpisodes ? `${watchedEpisodes} of ${totalEpisodes} watched` : 'Episode data is syncing',
+        image: show.poster_url ?? 'https://images.unsplash.com/photo-1485846234645-a62644f84728?q=80&w=600&auto=format&fit=crop',
+      } satisfies LibraryShow;
+    });
+}
+
+function numericIdFromString(value: string) {
+  return value.split('').reduce((total, char) => total + char.charCodeAt(0), 0);
+}
+
+export async function getWatchNextEpisodes(userId: string): Promise<Episode[]> {
+  const client = requireSupabase();
+  const { data: libraryItems, error } = await client
+    .from('user_library_items')
+    .select('status, shows(id, title, poster_url)')
+    .eq('user_id', userId)
+    .eq('media_type', 'show')
+    .order('updated_at', { ascending: false });
+
+  if (error) throw error;
+
+  const showRows = (libraryItems ?? [])
+    .map((item) => item.shows as { id: string; title: string; poster_url: string | null } | null)
+    .filter(Boolean) as Array<{ id: string; title: string; poster_url: string | null }>;
+  const showIds = showRows.map((show) => show.id);
+
+  if (!showIds.length) return [];
+
+  const { data: seasons, error: seasonsError } = await client
+    .from('seasons')
+    .select('id, show_id, season_number, episodes(id, episode_number, title, average_rating)')
+    .in('show_id', showIds)
+    .order('season_number', { ascending: true });
+
+  if (seasonsError) throw seasonsError;
+
+  const episodeIds = (seasons ?? []).flatMap((season) =>
+    ((season.episodes as Array<{ id: string }> | null) ?? []).map((episode) => episode.id)
+  );
+  const watchedIds = new Set<string>();
+
+  if (episodeIds.length) {
+    const { data: progressRows, error: progressError } = await client
+      .from('episode_watch_progress')
+      .select('episode_id')
+      .eq('user_id', userId)
+      .eq('watched', true)
+      .in('episode_id', episodeIds);
+
+    if (progressError) throw progressError;
+    progressRows?.forEach((row) => watchedIds.add(row.episode_id));
+  }
+
+  return (libraryItems ?? [])
+    .filter((item) => item.shows)
+    .flatMap((item) => {
+      const show = item.shows as { id: string; title: string; poster_url: string | null };
+      const showEpisodes = (seasons ?? [])
+        .filter((season) => season.show_id === show.id)
+        .flatMap((season) =>
+          ((season.episodes as Array<{ id: string; episode_number: number; title: string; average_rating: number | null }> | null) ?? [])
+            .map((episode) => ({
+              ...episode,
+              seasonNumber: season.season_number,
+            }))
+        )
+        .sort((a, b) => (a.seasonNumber - b.seasonNumber) || (a.episode_number - b.episode_number));
+      const watchedEpisodes = showEpisodes.filter((episode) => watchedIds.has(episode.id)).length;
+      const totalEpisodes = showEpisodes.length;
+      const nextEpisode = showEpisodes.find((episode) => !watchedIds.has(episode.id));
+
+      if (!nextEpisode) return [];
+
+      return {
+        id: numericIdFromString(nextEpisode.id),
+        show: show.title,
+        code: `S${String(nextEpisode.seasonNumber).padStart(2, '0')} | E${String(nextEpisode.episode_number).padStart(2, '0')}`,
+        title: nextEpisode.title,
+        tag: watchedEpisodes ? 'KEEP WATCHING' : 'START WATCHING',
+        progress: totalEpisodes ? Math.round((watchedEpisodes / totalEpisodes) * 100) : 0,
+        watchedEpisodes,
+        totalEpisodes,
+        averageRating: nextEpisode.average_rating ?? 0,
+        image: show.poster_url ?? 'https://images.unsplash.com/photo-1485846234645-a62644f84728?q=80&w=600&auto=format&fit=crop',
+        watched: false,
+      } satisfies Episode;
+    });
+}
+
 export async function getNotifications(userId: string) {
   const client = requireSupabase();
   const { data, error } = await client
@@ -192,6 +360,123 @@ export async function getReminders(userId: string) {
 
   if (error) throw error;
   return data;
+}
+
+export async function getUpcomingGroups(userId: string): Promise<UpcomingGroup[]> {
+  const client = requireSupabase();
+  const today = new Date();
+  const end = new Date(today);
+  end.setDate(today.getDate() + 14);
+
+  const { data: libraryItems, error: libraryError } = await client
+    .from('user_library_items')
+    .select('show_id')
+    .eq('user_id', userId)
+    .eq('media_type', 'show');
+
+  if (libraryError) throw libraryError;
+
+  const showIds = (libraryItems ?? []).map((item) => item.show_id).filter(Boolean) as string[];
+  if (!showIds.length) return [];
+
+  const { data: allEpisodes, error: allEpisodesError } = await client
+    .from('episodes')
+    .select('id, title, episode_number, air_date, seasons!inner(season_number, shows!inner(id, title, poster_url))')
+    .in('seasons.shows.id', showIds)
+    .order('air_date', { ascending: true, nullsFirst: false });
+
+  if (allEpisodesError) throw allEpisodesError;
+
+  const { data: episodes, error: episodesError } = await client
+    .from('episodes')
+    .select('id, title, episode_number, air_date, seasons!inner(season_number, shows!inner(id, title, poster_url))')
+    .in('seasons.shows.id', showIds)
+    .gte('air_date', today.toISOString().slice(0, 10))
+    .lte('air_date', end.toISOString().slice(0, 10))
+    .order('air_date', { ascending: true });
+
+  if (episodesError) throw episodesError;
+
+  const episodeIds = (allEpisodes ?? []).map((episode) => episode.id);
+  const reminderIds = new Set<string>();
+  const watchedIds = new Set<string>();
+
+  if (episodeIds.length) {
+    const [{ data: reminders, error: reminderError }, { data: progressRows, error: progressError }] = await Promise.all([
+      client
+        .from('reminders')
+        .select('episode_id')
+        .eq('user_id', userId)
+        .eq('enabled', true)
+        .in('episode_id', episodeIds),
+      client
+        .from('episode_watch_progress')
+        .select('episode_id')
+        .eq('user_id', userId)
+        .eq('watched', true)
+        .in('episode_id', episodeIds),
+    ]);
+
+    if (reminderError) throw reminderError;
+    if (progressError) throw progressError;
+    reminders?.forEach((reminder) => reminderIds.add(reminder.episode_id));
+    progressRows?.forEach((row) => watchedIds.add(row.episode_id));
+  }
+
+  const groups = new Map<string, UpcomingGroup>();
+  (episodes ?? []).forEach((episode) => {
+    const airDate = episode.air_date ? new Date(`${episode.air_date}T12:00:00`) : new Date();
+    const day = airDate.toLocaleDateString('en-US', { weekday: 'short' });
+    const date = airDate.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+    const key = `${day}-${date}`;
+    const season = episode.seasons as { season_number: number; shows: { title: string; poster_url: string | null } };
+
+    if (!groups.has(key)) {
+      groups.set(key, { day, date, items: [] });
+    }
+
+    groups.get(key)?.items.push({
+      show: season.shows.title,
+      code: `S${String(season.season_number).padStart(2, '0')} | E${String(episode.episode_number).padStart(2, '0')}`,
+      title: episode.title,
+      time: 'Release day',
+      platform: 'TVmaze',
+      tracked: reminderIds.has(episode.id),
+      image: season.shows.poster_url ?? 'https://images.unsplash.com/photo-1485846234645-a62644f84728?q=80&w=600&auto=format&fit=crop',
+    });
+  });
+
+  const upcomingGroups = [...groups.values()];
+  if (upcomingGroups.length) return upcomingGroups;
+
+  const nextItems = (libraryItems ?? []).flatMap((item) => {
+    const showEpisodes = (allEpisodes ?? [])
+      .filter((episode) => {
+        const season = episode.seasons as { shows: { id: string } };
+        return season.shows.id === item.show_id;
+      })
+      .sort((a, b) => {
+        const seasonA = a.seasons as { season_number: number };
+        const seasonB = b.seasons as { season_number: number };
+        return (seasonA.season_number - seasonB.season_number) || (a.episode_number - b.episode_number);
+      });
+    const nextEpisode = showEpisodes.find((episode) => !watchedIds.has(episode.id));
+
+    if (!nextEpisode) return [];
+
+    const season = nextEpisode.seasons as { season_number: number; shows: { title: string; poster_url: string | null } };
+    return {
+      show: season.shows.title,
+      code: `S${String(season.season_number).padStart(2, '0')} | E${String(nextEpisode.episode_number).padStart(2, '0')}`,
+      title: nextEpisode.title,
+      time: nextEpisode.air_date ? `Aired ${nextEpisode.air_date}` : 'Next to watch',
+      platform: 'Library',
+      tracked: reminderIds.has(nextEpisode.id),
+      image: season.shows.poster_url ?? 'https://images.unsplash.com/photo-1485846234645-a62644f84728?q=80&w=600&auto=format&fit=crop',
+    };
+  });
+
+  return nextItems.length ? [{ day: 'Next', date: 'Queue', items: nextItems }] : [];
 }
 
 export async function getProfileStats(userId: string) {
@@ -278,30 +563,93 @@ export async function getCommunityComments(context: { kind: 'episode' | 'movie';
   }));
 }
 
-export async function getShowSeasonsByTitle(title: string) {
+export async function createCommunityComment({
+  userId,
+  context,
+  body,
+  mood,
+}: {
+  userId: string;
+  context: { kind: 'episode' | 'movie'; title: string };
+  body: string;
+  mood: string;
+}) {
   const client = requireSupabase();
-  const show = await findShowByTitle(title);
-  if (!show) return [];
+  const lookup = context.kind === 'movie' ? await findMovieByTitle(context.title) : await findShowByTitle(context.title);
+  if (!lookup) throw new Error('Could not find this title in the catalog.');
+
+  const { error } = await client.from('comments').insert({
+    user_id: userId,
+    body,
+    spoiler_level: mood,
+    show_id: context.kind === 'episode' ? lookup.id : null,
+    movie_id: context.kind === 'movie' ? lookup.id : null,
+  });
+
+  if (error) throw error;
+}
+
+export async function getShowDetailByTitle(title: string, userId?: string) {
+  const client = requireSupabase();
+  const { data: show, error: showError } = await client
+    .from('shows')
+    .select('id, title, overview, poster_url, backdrop_url, status, average_rating')
+    .eq('title', title)
+    .maybeSingle();
+
+  if (showError) throw showError;
+  if (!show) return null;
 
   const { data, error } = await client
     .from('seasons')
-    .select('season_number, title, episodes(episode_number, title, average_rating)')
+    .select('season_number, title, episodes(id, episode_number, title, average_rating)')
     .eq('show_id', show.id)
     .order('season_number', { ascending: true });
 
   if (error) throw error;
 
-  return (data ?? []).map((season) => ({
-    season: season.title ?? `Season ${season.season_number}`,
-    episodes: ((season.episodes as Array<{ episode_number: number; title: string; average_rating: number | null }> | null) ?? [])
+  const episodeIds = (data ?? []).flatMap((season) =>
+    ((season.episodes as Array<{ id: string }> | null) ?? []).map((episode) => episode.id)
+  );
+  const watchedIds = new Set<string>();
+
+  if (userId && episodeIds.length) {
+    const { data: watchedRows, error: watchedError } = await client
+      .from('episode_watch_progress')
+      .select('episode_id')
+      .eq('user_id', userId)
+      .eq('watched', true)
+      .in('episode_id', episodeIds);
+
+    if (watchedError) throw watchedError;
+    watchedRows?.forEach((row) => watchedIds.add(row.episode_id));
+  }
+
+  return {
+    show: {
+      title: show.title,
+      overview: show.overview ?? 'Track seasons, episodes, and spoiler-safe reactions for this show.',
+      status: show.status ?? 'Series',
+      posterUrl: show.poster_url ?? 'https://images.unsplash.com/photo-1485846234645-a62644f84728?q=80&w=600&auto=format&fit=crop',
+      backdropUrl: show.backdrop_url,
+      averageRating: show.average_rating ?? 0,
+    },
+    seasons: (data ?? []).map((season) => ({
+      season: season.title ?? `Season ${season.season_number}`,
+      seasonNumber: season.season_number,
+      episodes: ((season.episodes as Array<{ id: string; episode_number: number; title: string; average_rating: number | null }> | null) ?? [])
       .sort((a, b) => a.episode_number - b.episode_number)
       .map((episode) => ({
+        id: episode.id,
         code: `E${String(episode.episode_number).padStart(2, '0')}`,
+        fullCode: `S${String(season.season_number).padStart(2, '0')} | E${String(episode.episode_number).padStart(2, '0')}`,
+        seasonNumber: season.season_number,
         title: episode.title,
-        watched: false,
+        watched: watchedIds.has(episode.id),
         averageRating: episode.average_rating ?? 0,
       })),
-  }));
+    })),
+  };
 }
 
 export async function saveProfileTheme(userId: string, theme: string) {
@@ -343,9 +691,51 @@ export async function searchExternalCatalog(query: string) {
   return searchTvmazeShows(query);
 }
 
+export async function getDiscoverShows(genres: string[] = [], services: string[] = []): Promise<DiscoverItem[]> {
+  const seeds = [...genres, 'drama', 'comedy', 'mystery', 'thriller', 'romance'].filter(Boolean);
+  const batches = await Promise.all(seeds.slice(0, 5).map((seed) => searchTvmazeShows(seed).catch(() => [])));
+  const seen = new Set<number>();
+  const shows = batches
+    .flat()
+    .filter((show) => {
+      if (seen.has(show.id)) return false;
+      seen.add(show.id);
+      return Boolean(show.image?.original ?? show.image?.medium);
+    })
+    .slice(0, 12);
+
+  return shows.map((show, index) => {
+    const rating = show.rating.average ? show.rating.average / 2 : null;
+    const serviceHint = services[index % Math.max(services.length, 1)];
+    const fit = [
+      show.status ?? 'Series',
+      show.premiered?.slice(0, 4) ?? 'New',
+      serviceHint ?? 'TVmaze',
+    ].filter(Boolean);
+
+    return {
+      title: show.name,
+      meta: `${show.status ?? 'Series'} - ${show.premiered?.slice(0, 4) ?? 'Upcoming'} - ${
+        rating ? rating.toFixed(1) : 'New'
+      } rating`,
+      body: show.summary?.replace(/<[^>]+>/g, '') ?? 'A fresh recommendation pulled from the live TVmaze catalog.',
+      reason: genres.length ? `Picked from your ${genres[0]} taste profile.` : 'Picked from the live TVmaze catalog.',
+      match: rating ? `${Math.round(rating * 20)}% match` : 'New pick',
+      fit,
+      image:
+        show.image?.original ??
+        show.image?.medium ??
+        'https://images.unsplash.com/photo-1485846234645-a62644f84728?q=80&w=900&auto=format&fit=crop',
+      source: 'tvmaze',
+      tmdbId: show.id,
+    };
+  });
+}
+
 export async function importExternalShow(show: TvmazeShow) {
   const client = requireSupabase();
   const showPayload = {
+    tmdb_id: show.id,
     title: show.name,
     overview: show.summary?.replace(/<[^>]+>/g, '') ?? null,
     poster_url: show.image?.original ?? show.image?.medium ?? null,
@@ -361,7 +751,7 @@ export async function importExternalShow(show: TvmazeShow) {
   if (showError) throw showError;
 
   const episodes = await getTvmazeEpisodes(show.id);
-  const seasons = [...new Set(episodes.map((episode) => episode.season))].slice(0, 3);
+  const seasons = [...new Set(episodes.map((episode) => episode.season))];
 
   for (const seasonNumber of seasons) {
     const { data: seasonRow, error: seasonError } = await client
@@ -580,7 +970,7 @@ export async function addMovieToLibrary(userId: string, movieId: string) {
   return data;
 }
 
-export async function markEpisodeWatched(userId: string, episodeId: string, rating?: number) {
+export async function markEpisodeWatched(userId: string, episodeId: string, rating?: number, reaction?: Partial<EpisodeReaction>) {
   const client = requireSupabase();
   const { data, error } = await client
     .from('episode_watch_progress')
@@ -590,7 +980,10 @@ export async function markEpisodeWatched(userId: string, episodeId: string, rati
         episode_id: episodeId,
         watched: true,
         watched_at: new Date().toISOString(),
-        rating,
+        rating: reaction?.rating ?? rating,
+        reaction_mood: reaction?.mood,
+        favorite_character: reaction?.favoriteCharacter,
+        note: reaction?.note,
       },
       { onConflict: 'user_id,episode_id' }
     )
@@ -599,6 +992,23 @@ export async function markEpisodeWatched(userId: string, episodeId: string, rati
 
   if (error) throw error;
   return data;
+}
+
+export async function saveEpisodeReaction({
+  userId,
+  showTitle,
+  code,
+  reaction,
+}: {
+  userId: string;
+  showTitle: string;
+  code: string;
+  reaction: EpisodeReaction;
+}) {
+  const episode = await findEpisodeByShowAndCode(showTitle, code);
+  if (!episode) throw new Error('Could not find this episode in the catalog.');
+
+  return markEpisodeWatched(userId, episode.id, reaction.rating, reaction);
 }
 
 export async function markMovieWatched(userId: string, movieId: string, rating?: number) {
@@ -644,6 +1054,73 @@ export async function markAllNotificationsRead(userId: string) {
     .is('read_at', null);
 
   if (error) throw error;
+}
+
+export async function createNotification({
+  userId,
+  type,
+  title,
+  body,
+  deepLink,
+}: {
+  userId: string;
+  type: string;
+  title: string;
+  body?: string;
+  deepLink?: string;
+}) {
+  const client = requireSupabase();
+  const normalizedBody = body ?? '';
+  const normalizedDeepLink = deepLink ?? '';
+  const since = new Date(Date.now() - 5 * 60 * 1000).toISOString();
+  const { data: duplicate, error: duplicateError } = await client
+    .from('notifications')
+    .select('id')
+    .eq('user_id', userId)
+    .eq('type', type)
+    .eq('title', title)
+    .eq('body', normalizedBody)
+    .eq('deep_link', normalizedDeepLink)
+    .gte('created_at', since)
+    .limit(1)
+    .maybeSingle();
+
+  if (duplicateError) throw duplicateError;
+  if (duplicate) return duplicate;
+
+  const { data, error } = await client
+    .from('notifications')
+    .insert({
+      user_id: userId,
+      type,
+      title,
+      body: normalizedBody,
+      deep_link: normalizedDeepLink,
+    })
+    .select()
+    .single();
+
+  if (error) {
+    if ('code' in error && error.code === '23505') {
+      const { data: existing, error: existingError } = await client
+        .from('notifications')
+        .select('*')
+        .eq('user_id', userId)
+        .eq('type', type)
+        .eq('title', title)
+        .eq('body', normalizedBody)
+        .eq('deep_link', normalizedDeepLink)
+        .is('read_at', null)
+        .limit(1)
+        .maybeSingle();
+
+      if (existingError) throw existingError;
+      if (existing) return existing;
+    }
+
+    throw error;
+  }
+  return data;
 }
 
 export async function toggleReminderForEpisode({
@@ -709,6 +1186,45 @@ export async function getLists(userId: string) {
   return data;
 }
 
+export async function getHydratedLists(userId: string): Promise<CustomList[]> {
+  const client = requireSupabase();
+  const { data, error } = await client
+    .from('lists')
+    .select('id, title, privacy, list_items(id, media_type, shows(title, poster_url, status), movies(title, poster_url, runtime_minutes))')
+    .eq('user_id', userId)
+    .order('updated_at', { ascending: false });
+
+  if (error) throw error;
+
+  return (data ?? []).map((list) => {
+    const items = ((list.list_items as Array<{
+      media_type: 'show' | 'movie';
+      shows: { title: string; poster_url: string | null; status: string | null } | null;
+      movies: { title: string; poster_url: string | null; runtime_minutes: number | null } | null;
+    }> | null) ?? []).map((item) => {
+      const target = item.media_type === 'show' ? item.shows : item.movies;
+      return {
+        title: target?.title ?? 'Untitled',
+        meta:
+          item.media_type === 'show'
+            ? `Show - ${item.shows?.status ?? 'Series'}`
+            : `Movie - ${item.movies?.runtime_minutes ?? 110} min`,
+        image:
+          target?.poster_url ??
+          'https://images.unsplash.com/photo-1485846234645-a62644f84728?q=80&w=600&auto=format&fit=crop',
+      };
+    });
+
+    return {
+      title: list.title,
+      count: `${items.length} titles`,
+      privacy: list.privacy === 'public' ? 'Public' : 'Private',
+      images: items.slice(0, 3).map((item) => item.image),
+      items,
+    };
+  });
+}
+
 export async function toggleListPrivacy(userId: string, title: string, privacy: 'private' | 'public') {
   const client = requireSupabase();
   const { data, error } = await client
@@ -740,6 +1256,33 @@ export async function addMovieTitleToList(userId: string, listTitle: string, mov
         list_id: list.id,
         media_type: 'movie',
         movie_id: movie.id,
+      },
+      { onConflict: 'list_id,media_type,target_id' }
+    )
+    .select()
+    .single();
+
+  if (error) throw error;
+  return data;
+}
+
+export async function addShowTitleToList(userId: string, listTitle: string, showTitle: string) {
+  const client = requireSupabase();
+  const [{ data: list, error: listError }, show] = await Promise.all([
+    client.from('lists').select('id').eq('user_id', userId).eq('title', listTitle).maybeSingle(),
+    findShowByTitle(showTitle),
+  ]);
+
+  if (listError) throw listError;
+  if (!list || !show) return null;
+
+  const { data, error } = await client
+    .from('list_items')
+    .upsert(
+      {
+        list_id: list.id,
+        media_type: 'show',
+        show_id: show.id,
       },
       { onConflict: 'list_id,media_type,target_id' }
     )

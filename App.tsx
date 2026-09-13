@@ -5,38 +5,40 @@ import { SafeAreaView, ScrollView, Text, View } from 'react-native';
 import { Navigate, Route, Routes, useLocation, useNavigate, useParams } from 'react-router-dom';
 
 import { EmptyState, EpisodeCard, NavItem, ScreenHeader } from './src/components';
-import {
-  customLists as initialCustomLists,
-  discoveries,
-  showSeasons,
-  upcomingGroups as initialUpcomingGroups,
-} from './src/data';
+import { showSeasons } from './src/data';
 import { usePreferences } from './src/hooks/usePreferences';
+import { useResponsive } from './src/hooks/useResponsive';
 import {
   getCurrentSession,
   addMovieToLibrary,
   addShowToLibrary,
   addMovieTitleToList,
+  addShowTitleToList,
+  createCommunityComment,
+  createNotification,
   createList as saveCustomList,
   findEpisodeByShowAndCode,
   findMovieByTitle,
   findShowByTitle,
-  getLists,
+  getHydratedLists,
   getCommunityComments,
   getProfile,
   getProfileStats,
   getRecentActivity,
   getUserPreferences,
-  getLibraryItems,
+  getLibraryShows,
   getNotifications,
-  getReminders,
-  getShowSeasonsByTitle,
+  getDiscoverShows,
+  getUpcomingGroups,
+  getWatchNextEpisodes,
+  getShowDetailByTitle,
   markAllNotificationsRead,
   setNotificationRead,
   markEpisodeWatched as saveEpisodeWatched,
   markMovieWatched as saveMovieWatched,
   requestAccountDeletion,
   saveOnboardingPreferences,
+  saveEpisodeReaction,
   saveProfileTheme,
   searchCatalog,
   searchExternalCatalog,
@@ -46,7 +48,7 @@ import {
   signUpWithEmail,
   toggleListPrivacy,
   toggleReminderForEpisode,
-} from './src/lib/watchlightApi';
+} from './src/lib/itsShowTimeApi';
 import { isSupabaseConfigured, supabase } from './src/lib/supabase';
 import {
   AuthPage,
@@ -70,6 +72,7 @@ import { gold, themes } from './src/theme';
 import type {
   CommunityContext,
   CustomList,
+  DiscoverItem,
   Episode,
   LibraryShow,
   Movie,
@@ -77,6 +80,7 @@ import type {
   CommunityComment,
   RecentActivity,
   SearchResult,
+  ShowDetailInfo,
   ShowSeason,
   Tab,
   UpcomingGroup,
@@ -93,6 +97,7 @@ function fromSlug(value = '') {
 }
 
 export default function App() {
+  const { isCompact, isTablet, isDesktop } = useResponsive();
   const navigate = useNavigate();
   const location = useLocation();
   const [isAuthed, setIsAuthed] = useState(false);
@@ -117,11 +122,17 @@ export default function App() {
   const [trackedSearchResults, setTrackedSearchResults] = useState<SearchResult[]>([]);
   const [trackedLibraryShows, setTrackedLibraryShows] = useState<LibraryShow[]>([]);
   const [trackedMovies, setTrackedMovies] = useState<Movie[]>([]);
-  const [trackedUpcomingGroups, setTrackedUpcomingGroups] = useState<UpcomingGroup[]>(initialUpcomingGroups);
+  const [trackedUpcomingGroups, setTrackedUpcomingGroups] = useState<UpcomingGroup[]>([]);
   const [trackedNotifications, setTrackedNotifications] = useState<NotificationItem[]>([]);
-  const [trackedLists, setTrackedLists] = useState<CustomList[]>(initialCustomLists);
+  const [trackedLists, setTrackedLists] = useState<CustomList[]>([]);
+  const [discoverItems, setDiscoverItems] = useState<DiscoverItem[]>([]);
   const [libraryTitles, setLibraryTitles] = useState<string[]>([]);
   const [dynamicShowSeasons, setDynamicShowSeasons] = useState<Record<string, ShowSeason[]>>({});
+  const [dynamicShowDetails, setDynamicShowDetails] = useState<Record<string, ShowDetailInfo>>({});
+  const [showDetailLoading, setShowDetailLoading] = useState<Record<string, boolean>>({});
+  const [showDetailErrors, setShowDetailErrors] = useState<Record<string, string>>({});
+  const [showDetailRetry, setShowDetailRetry] = useState<Record<string, number>>({});
+  const [watchedEpisodeKeys, setWatchedEpisodeKeys] = useState<Record<string, boolean>>({});
   const [backendProfileStats, setBackendProfileStats] = useState<{ episodes: number; totalTime: string; streak: string } | null>(null);
   const [communityComments, setCommunityComments] = useState<CommunityComment[]>([]);
   const [recentActivity, setRecentActivity] = useState<RecentActivity[]>([]);
@@ -143,8 +154,8 @@ export default function App() {
   }, [trackedLibraryShows, trackedMovies, trackedUpcomingGroups]);
   const profileStats = backendProfileStats ?? fallbackProfileStats;
 
-  const activeDiscovery = discoveries[queueIndex % discoveries.length];
-  const nextDiscoveries = discoveries.filter((_, index) => index !== queueIndex % discoveries.length);
+  const activeDiscovery = discoverItems.length ? discoverItems[queueIndex % discoverItems.length] : undefined;
+  const nextDiscoveries = discoverItems.filter((_, index) => index !== queueIndex % Math.max(discoverItems.length, 1)).slice(0, 3);
   const activeTab = mainTabs.find((tab) => location.pathname === `/${tab}`) ?? 'shows';
   const shouldShowNav = mainTabs.some((tab) => location.pathname === `/${tab}`);
 
@@ -197,6 +208,48 @@ export default function App() {
       tmdbId: item.id,
     }));
 
+  const mapDiscoverToSearchResult = (item: DiscoverItem): SearchResult => ({
+    title: item.title,
+    meta: item.meta,
+    platform: item.fit[2] === 'TVmaze' ? '' : item.fit[2] ?? '',
+    status: libraryTitles.includes(item.title) ? 'In library' : 'Add',
+    type: 'Shows',
+    image: item.image,
+    source: item.source,
+    tmdbId: item.tmdbId,
+  });
+
+  const refreshNotifications = async (userId: string) => {
+    const notifications = await getNotifications(userId);
+    setTrackedNotifications(
+      notifications.map((notification) => ({
+        id: notification.id,
+        type: notification.type,
+        title: notification.title,
+        body: notification.body ?? '',
+        time: new Date(notification.created_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric' }),
+        unread: !notification.read_at,
+        icon: Bell,
+        tone: notification.read_at ? '#34392e' : gold,
+      }))
+    );
+  };
+
+  const refreshUpcoming = async (userId: string) => {
+    const groups = await getUpcomingGroups(userId);
+    setTrackedUpcomingGroups(groups);
+  };
+
+  const refreshWatchNext = async (userId: string) => {
+    const episodes = await getWatchNextEpisodes(userId);
+    setTrackedEpisodes(episodes);
+  };
+
+  const refreshLists = async (userId: string) => {
+    const lists = await getHydratedLists(userId);
+    setTrackedLists(lists);
+  };
+
   useEffect(() => {
     if (!supabase) {
       setIsAuthLoading(false);
@@ -235,6 +288,11 @@ export default function App() {
   useEffect(() => {
     if (!currentUser) {
       setProfile(null);
+      setTrackedEpisodes([]);
+      setTrackedLibraryShows([]);
+      setTrackedUpcomingGroups([]);
+      setTrackedNotifications([]);
+      setTrackedLists([]);
       return;
     }
 
@@ -263,108 +321,41 @@ export default function App() {
       .then(setBackendProfileStats)
       .catch(() => undefined);
 
+    getDiscoverShows(selectedGenres, selectedServices)
+      .then((items) => {
+        setDiscoverItems(items);
+        setQueueIndex(0);
+      })
+      .catch(() => setDiscoverItems([]));
+
     getRecentActivity(currentUser.id)
       .then(setRecentActivity)
       .catch(() => setRecentActivity([]));
 
-    getNotifications(currentUser.id)
-      .then((notifications) => {
-        if (!notifications.length) return;
-        setTrackedNotifications(
-          notifications.map((notification) => ({
-            id: notification.id,
-            type: notification.type,
-            title: notification.title,
-            body: notification.body ?? '',
-            time: new Date(notification.created_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric' }),
-            unread: !notification.read_at,
-            icon: Bell,
-            tone: notification.read_at ? '#34392e' : gold,
-          }))
-        );
+    refreshNotifications(currentUser.id).catch(() => setTrackedNotifications([]));
+    refreshUpcoming(currentUser.id).catch(() => setTrackedUpcomingGroups([]));
+
+    getLibraryShows(currentUser.id)
+      .then((backendShows) => {
+        setLibraryTitles(backendShows.map((show) => show.title));
+        setTrackedLibraryShows(backendShows);
       })
       .catch(() => undefined);
+    refreshWatchNext(currentUser.id).catch(() => setTrackedEpisodes([]));
 
-    getReminders(currentUser.id)
-      .then((reminders) => {
-        if (!reminders.length) return;
-        setTrackedUpcomingGroups((groups) =>
-          groups.map((group) => ({
-            ...group,
-            items: group.items.map((item) => {
-              const reminder = reminders.find((row) => {
-                const episode = row.episodes as
-                  | { episode_number: number; seasons: { season_number: number; shows: { title: string } } }
-                  | null;
-                return (
-                  episode?.seasons?.shows?.title === item.show &&
-                  item.code.includes(`S${String(episode.seasons.season_number).padStart(2, '0')}`) &&
-                  item.code.includes(`E${String(episode.episode_number).padStart(2, '0')}`)
-                );
-              });
-
-              return reminder ? { ...item, tracked: reminder.enabled } : item;
-            }),
-          }))
-        );
-      })
-      .catch(() => undefined);
-
-    getLibraryItems(currentUser.id)
-      .then((items) => {
-        const backendShows = items
-          .filter((item) => item.media_type === 'show' && item.shows)
-          .map((item) => {
-            const show = item.shows as { title: string; poster_url: string | null };
-            const fallback = trackedLibraryShows.find((libraryShow) => libraryShow.title === show.title);
-
-            return {
-              title: show.title,
-              status:
-                item.status === 'finished'
-                  ? 'Finished'
-                  : item.status === 'paused'
-                    ? 'Paused'
-                    : item.status === 'dropped'
-                      ? 'Dropped'
-                      : 'Watching',
-              progress: fallback?.progress ?? 0,
-              watchedEpisodes: fallback?.watchedEpisodes ?? 0,
-              totalEpisodes: fallback?.totalEpisodes ?? 8,
-              next: fallback?.next ?? 'S01 | E01',
-              meta: fallback?.meta ?? 'Synced from your account',
-              image: show.poster_url ?? fallback?.image ?? 'https://images.unsplash.com/photo-1485846234645-a62644f84728?q=80&w=600&auto=format&fit=crop',
-            } satisfies LibraryShow;
-          });
-
-        if (backendShows.length) {
-          setLibraryTitles((titles) => [
-            ...new Set([...titles, ...backendShows.map((show) => show.title)]),
-          ]);
-          setTrackedLibraryShows((shows) => [
-            ...backendShows,
-            ...shows.filter((show) => !backendShows.some((backendShow) => backendShow.title === show.title)),
-          ]);
-        }
-      })
-      .catch(() => undefined);
-
-    getLists(currentUser.id)
-      .then((lists) => {
-        if (!lists.length) return;
-        setTrackedLists((currentLists) => [
-          ...lists.map((list) => ({
-            title: list.title,
-            count: `${list.list_items?.length ?? 0} titles`,
-            privacy: list.privacy === 'public' ? 'Public' : 'Private',
-            images: currentLists.find((item) => item.title === list.title)?.images ?? [],
-            items: currentLists.find((item) => item.title === list.title)?.items ?? [],
-          })),
-          ...currentLists.filter((list) => !lists.some((backendList) => backendList.title === list.title)),
-        ]);
-      })
-      .catch(() => undefined);
+    refreshLists(currentUser.id).catch(() => setTrackedLists([]));
   }, [currentUser, setSelectedGenres, setSelectedServices]);
+
+  useEffect(() => {
+    if (!currentUser) return;
+
+    getDiscoverShows(selectedGenres, selectedServices)
+      .then((items) => {
+        setDiscoverItems(items);
+        setQueueIndex(0);
+      })
+      .catch(() => setDiscoverItems([]));
+  }, [currentUser, selectedGenres, selectedServices]);
 
   const handleAuth = async (
     mode: 'signin' | 'signup',
@@ -507,32 +498,47 @@ export default function App() {
     watched: false,
   });
 
-  const markEpisodeWatched = async (episodeToWatch: Episode) => {
-    const wasAlreadyWatched = trackedEpisodes.some(
-      (episode) => episode.id === episodeToWatch.id && episode.watched
-    );
+  const markEpisodeWatched = async (episodeToWatch: Episode, backendEpisodeId?: string) => {
+    const episodeWatchKey = backendEpisodeId ?? `${episodeToWatch.show}:${episodeToWatch.code}`;
+    const wasAlreadyWatched = watchedEpisodeKeys[episodeWatchKey];
+
+    if (wasAlreadyWatched) return;
+
+    setWatchedEpisodeKeys((keys) => ({ ...keys, [episodeWatchKey]: true }));
 
     setTrackedEpisodes((currentEpisodes) =>
       currentEpisodes.map((episode) =>
         episode.id === episodeToWatch.id
-          ? episode.watched
-            ? episode
-            : {
-                ...episode,
-                watched: true,
-                watchedEpisodes: Math.min(episode.totalEpisodes, episode.watchedEpisodes + 1),
-                progress: Math.min(100, Math.round(((episode.watchedEpisodes + 1) / episode.totalEpisodes) * 100)),
-              }
+          ? {
+              ...episode,
+              watched: true,
+              watchedEpisodes: Math.min(episode.totalEpisodes, episode.watchedEpisodes + 1),
+              progress: Math.min(100, Math.round(((episode.watchedEpisodes + 1) / episode.totalEpisodes) * 100)),
+            }
           : episode
       )
     );
 
-    if (wasAlreadyWatched) return;
-
     if (currentUser) {
-      const backendEpisode = await findEpisodeByShowAndCode(episodeToWatch.show, episodeToWatch.code);
+      const backendEpisode = backendEpisodeId ? { id: backendEpisodeId } : await findEpisodeByShowAndCode(episodeToWatch.show, episodeToWatch.code);
       if (backendEpisode) {
         await saveEpisodeWatched(currentUser.id, backendEpisode.id, episodeToWatch.averageRating);
+        createNotification({
+          userId: currentUser.id,
+          type: 'Progress',
+          title: `${episodeToWatch.code} watched`,
+          body: `${episodeToWatch.show} moved forward in your library.`,
+          deepLink: `/shows/${toSlug(episodeToWatch.show)}`,
+        })
+          .then(() => refreshNotifications(currentUser.id))
+          .catch(() => undefined);
+        getLibraryShows(currentUser.id)
+          .then((backendShows) => {
+            setLibraryTitles(backendShows.map((show) => show.title));
+            setTrackedLibraryShows(backendShows);
+          })
+          .catch(() => undefined);
+        refreshWatchNext(currentUser.id).catch(() => undefined);
         getRecentActivity(currentUser.id).then(setRecentActivity).catch(() => undefined);
         getProfileStats(currentUser.id).then(setBackendProfileStats).catch(() => undefined);
       }
@@ -553,6 +559,43 @@ export default function App() {
     );
   };
 
+  const addShowResultToLibrary = async (resultToAdd: SearchResult) => {
+    if (resultToAdd.type !== 'Shows') return;
+
+    setLibraryTitles((titles) => (titles.includes(resultToAdd.title) ? titles : [...titles, resultToAdd.title]));
+    setTrackedLibraryShows((shows) =>
+      shows.some((show) => show.title === resultToAdd.title) ? shows : [createLibraryShow(resultToAdd), ...shows]
+    );
+    setTrackedEpisodes((currentEpisodes) =>
+      currentEpisodes.some((episode) => episode.show === resultToAdd.title)
+        ? currentEpisodes
+        : [createEpisodeFromResult(resultToAdd), ...currentEpisodes]
+    );
+
+    if (!currentUser) return;
+
+    if (resultToAdd.source === 'tvmaze' && resultToAdd.tmdbId) {
+      const externalShow = (await searchExternalCatalog(resultToAdd.title)).find((show) => show.id === resultToAdd.tmdbId);
+      if (externalShow) await importExternalShow(externalShow);
+    }
+
+    const show = await findShowByTitle(resultToAdd.title);
+    if (show) await addShowToLibrary(currentUser.id, show.id);
+    await createNotification({
+      userId: currentUser.id,
+      type: 'Library',
+      title: `${resultToAdd.title} added`,
+      body: 'This show is now in your library and ready to track.',
+      deepLink: `/shows/${toSlug(resultToAdd.title)}`,
+    });
+    const backendShows = await getLibraryShows(currentUser.id);
+    setLibraryTitles(backendShows.map((show) => show.title));
+    setTrackedLibraryShows(backendShows);
+    await refreshWatchNext(currentUser.id);
+    refreshNotifications(currentUser.id).catch(() => undefined);
+    refreshUpcoming(currentUser.id).catch(() => undefined);
+  };
+
   const toggleSearchResult = async (title: string) => {
     const resultToToggle = trackedSearchResults.find((result) => result.title === title);
 
@@ -562,36 +605,28 @@ export default function App() {
       )
     );
 
-    if (!resultToToggle || resultToToggle.status === 'In library') return;
-    if (resultToToggle.type === 'Movies') return;
+    if (!resultToToggle || resultToToggle.status === 'In library' || resultToToggle.type === 'Movies') return;
 
-    if (resultToToggle.type === 'Shows') {
-      setLibraryTitles((titles) => (titles.includes(resultToToggle.title) ? titles : [...titles, resultToToggle.title]));
-      setTrackedLibraryShows((shows) =>
-        shows.some((show) => show.title === resultToToggle.title) ? shows : [createLibraryShow(resultToToggle), ...shows]
-      );
-      setTrackedEpisodes((currentEpisodes) =>
-        currentEpisodes.some((episode) => episode.show === resultToToggle.title)
-          ? currentEpisodes
-          : [createEpisodeFromResult(resultToToggle), ...currentEpisodes]
-      );
-
-      if (currentUser) {
-        try {
-          if (resultToToggle.source === 'tvmaze' && resultToToggle.tmdbId) {
-            const externalShow = (await searchExternalCatalog(resultToToggle.title)).find(
-              (show) => show.id === resultToToggle.tmdbId
-            );
-            if (externalShow) await importExternalShow(externalShow);
-          }
-
-          const show = await findShowByTitle(resultToToggle.title);
-          if (show) await addShowToLibrary(currentUser.id, show.id);
-        } catch {
-          // Keep the local add feedback; backend import can be retried from search later.
-        }
-      }
+    try {
+      await addShowResultToLibrary(resultToToggle);
+    } catch {
+      // Keep the local add feedback; backend import can be retried from search later.
     }
+  };
+
+  const openSearchResult = async (result: SearchResult) => {
+    if (result.type === 'Movies' || result.type === 'People') return;
+
+    try {
+      await addShowResultToLibrary(result);
+    } catch {
+      // The detail route can still hydrate the show from TVmaze.
+    }
+
+    setTrackedSearchResults((results) =>
+      results.map((item) => (item.title === result.title ? { ...item, status: 'In library' } : item))
+    );
+    navigate(`/shows/${toSlug(result.title)}`);
   };
 
   const addSelectedStarterShows = () => {
@@ -643,7 +678,18 @@ export default function App() {
     );
 
     if (currentUser) {
-      toggleReminderForEpisode({ userId: currentUser.id, showTitle: show, code, enabled: nextEnabled }).catch(() => undefined);
+      toggleReminderForEpisode({ userId: currentUser.id, showTitle: show, code, enabled: nextEnabled })
+        .then(() =>
+          createNotification({
+            userId: currentUser.id,
+            type: 'Reminder',
+            title: nextEnabled ? 'Reminder enabled' : 'Reminder paused',
+            body: `${show} ${code}`,
+            deepLink: '/calendar',
+          })
+        )
+        .then(() => Promise.all([refreshUpcoming(currentUser.id), refreshNotifications(currentUser.id)]))
+        .catch(() => undefined);
     }
   };
 
@@ -671,25 +717,84 @@ export default function App() {
   const ShowDetailRoute = () => {
     const { title } = useParams();
     const showTitle = fromSlug(title);
-    const episode = trackedEpisodes.find((item) => item.show === showTitle);
+    const libraryShow = trackedLibraryShows.find((item) => item.title === showTitle);
+    const episode =
+      trackedEpisodes.find((item) => item.show === showTitle) ??
+      (libraryShow
+        ? {
+            id: Math.abs(showTitle.split('').reduce((total, char) => total + char.charCodeAt(0), 0)),
+            show: libraryShow.title,
+            code: libraryShow.next === 'Finished' || libraryShow.next === 'Importing episodes' ? 'S01 | E01' : libraryShow.next,
+            title: libraryShow.next === 'Finished' ? 'Finished' : 'Next episode',
+            tag: libraryShow.status.toUpperCase(),
+            progress: libraryShow.progress,
+            watchedEpisodes: libraryShow.watchedEpisodes,
+            totalEpisodes: libraryShow.totalEpisodes,
+            averageRating: 0,
+            image: libraryShow.image,
+            watched: libraryShow.status === 'Finished',
+          }
+        : undefined);
 
     useEffect(() => {
       if (!episode || dynamicShowSeasons[showTitle]?.length) return;
 
-      getShowSeasonsByTitle(showTitle)
-        .then((seasons) => {
-          if (!seasons.length) return;
-          setDynamicShowSeasons((current) => ({ ...current, [showTitle]: seasons }));
+      const loadShowDetail = async () => {
+        setShowDetailLoading((current) => ({ ...current, [showTitle]: true }));
+        setShowDetailErrors((current) => ({ ...current, [showTitle]: '' }));
+        const detail = await getShowDetailByTitle(showTitle, currentUser?.id);
+        if (detail) {
+          setDynamicShowDetails((current) => ({ ...current, [showTitle]: detail.show }));
+          if (detail.seasons.length) {
+            setDynamicShowSeasons((current) => ({ ...current, [showTitle]: detail.seasons }));
+          }
+        }
+
+        const externalMatches = await searchExternalCatalog(showTitle);
+        const exactMatch = externalMatches.find((item) => item.name.toLowerCase() === showTitle.toLowerCase());
+        if (!exactMatch) return;
+
+        await importExternalShow(exactMatch);
+        const refreshedDetail = await getShowDetailByTitle(showTitle, currentUser?.id);
+        if (refreshedDetail) {
+          setDynamicShowDetails((current) => ({ ...current, [showTitle]: refreshedDetail.show }));
+          if (refreshedDetail.seasons.length) {
+            setDynamicShowSeasons((current) => ({ ...current, [showTitle]: refreshedDetail.seasons }));
+          }
+        }
+      };
+
+      loadShowDetail()
+        .catch((error) => {
+          setShowDetailErrors((current) => ({
+            ...current,
+            [showTitle]: error instanceof Error ? error.message : 'Could not load this show.',
+          }));
         })
-        .catch(() => undefined);
-    }, [episode, showTitle]);
+        .finally(() => {
+          setShowDetailLoading((current) => ({ ...current, [showTitle]: false }));
+        });
+    }, [episode, showTitle, currentUser?.id, showDetailRetry[showTitle]]);
 
     if (!episode) return <Navigate to="/shows" replace />;
 
     return (
       <ShowDetail
         episode={episode}
-        seasons={dynamicShowSeasons[episode.show] ?? showSeasons[episode.show] ?? []}
+        showInfo={dynamicShowDetails[episode.show]}
+        seasons={dynamicShowSeasons[episode.show] ?? []}
+        isLoading={Boolean(showDetailLoading[episode.show])}
+        error={showDetailErrors[episode.show]}
+        lists={trackedLists}
+        onRetry={() => {
+          setDynamicShowSeasons((current) => {
+            const next = { ...current };
+            delete next[episode.show];
+            return next;
+          });
+          setShowDetailErrors((current) => ({ ...current, [episode.show]: '' }));
+          setShowDetailRetry((current) => ({ ...current, [episode.show]: (current[episode.show] ?? 0) + 1 }));
+        }}
         onBack={() => navigate('/shows')}
         onOpenCommunity={() =>
           openCommunity({
@@ -701,15 +806,46 @@ export default function App() {
           })
         }
         onWatch={(detailEpisode) => {
-          markEpisodeWatched(episode).catch(() => undefined);
-          setSelected({
+          const episodeToWatch = {
             ...episode,
-            code: detailEpisode?.code ? `S02 | ${detailEpisode.code}` : episode.code,
+            code: detailEpisode?.fullCode ?? episode.code,
             title: detailEpisode?.title ?? episode.title,
             averageRating: detailEpisode?.averageRating ?? episode.averageRating,
             watched: true,
+          };
+          if (!detailEpisode?.watched) {
+            markEpisodeWatched(episodeToWatch, detailEpisode?.id).catch(() => undefined);
+          }
+          if (detailEpisode && !detailEpisode.watched) {
+            setDynamicShowSeasons((current) => ({
+              ...current,
+              [episode.show]: (current[episode.show] ?? []).map((season) => ({
+                ...season,
+                episodes: season.episodes.map((item) =>
+                  item.id === detailEpisode.id || item.fullCode === detailEpisode.fullCode ? { ...item, watched: true } : item
+                ),
+              })),
+            }));
+          }
+          setSelected({
+            ...episodeToWatch,
           });
-          navigate(`/episodes/${toSlug(episode.show)}/${toSlug(detailEpisode?.code ?? episode.code)}`);
+          navigate(`/episodes/${toSlug(episode.show)}/${toSlug(detailEpisode?.fullCode ?? episode.code)}`);
+        }}
+        onAddToList={(listTitle) => {
+          if (!currentUser) return;
+          addShowTitleToList(currentUser.id, listTitle, episode.show)
+            .then(() =>
+              createNotification({
+                userId: currentUser.id,
+                type: 'List',
+                title: `${episode.show} saved`,
+                body: `Added to ${listTitle}.`,
+                deepLink: '/lists',
+              })
+            )
+            .then(() => Promise.all([refreshLists(currentUser.id), refreshNotifications(currentUser.id)]))
+            .catch(() => undefined);
         }}
       />
     );
@@ -728,9 +864,31 @@ export default function App() {
       <EpisodeReactionPage
         episode={episode}
         onBack={() => navigate(`/shows/${toSlug(episode.show)}`)}
-        onSave={() => {
-          markEpisodeWatched(episode).catch(() => undefined);
-          navigate('/shows');
+        onSave={async (reaction) => {
+          if (!currentUser) return;
+          await saveEpisodeReaction({
+            userId: currentUser.id,
+            showTitle: episode.show,
+            code: episode.code,
+            reaction,
+          });
+          await createNotification({
+            userId: currentUser.id,
+            type: 'Progress',
+            title: `${episode.code} reaction saved`,
+            body: `${reaction.mood} saved for ${episode.show}.`,
+            deepLink: `/episodes/${toSlug(episode.show)}/${toSlug(episode.code)}`,
+          });
+          await Promise.all([
+            refreshWatchNext(currentUser.id),
+            getLibraryShows(currentUser.id).then((backendShows) => {
+              setLibraryTitles(backendShows.map((show) => show.title));
+              setTrackedLibraryShows(backendShows);
+            }),
+            getRecentActivity(currentUser.id).then(setRecentActivity),
+            getProfileStats(currentUser.id).then(setBackendProfileStats),
+            refreshNotifications(currentUser.id),
+          ]);
         }}
         onOpenCommunity={() =>
           openCommunity({
@@ -777,7 +935,20 @@ export default function App() {
             )
           );
 
-          if (currentUser) addMovieTitleToList(currentUser.id, listTitle, movie.title).catch(() => undefined);
+          if (currentUser) {
+            addMovieTitleToList(currentUser.id, listTitle, movie.title)
+              .then(() =>
+                createNotification({
+                  userId: currentUser.id,
+                  type: 'List',
+                  title: `${movie.title} saved`,
+                  body: `Added to ${listTitle}.`,
+                  deepLink: '/lists',
+                })
+              )
+              .then(() => Promise.all([refreshLists(currentUser.id), refreshNotifications(currentUser.id)]))
+              .catch(() => undefined);
+          }
         }}
         onOpenCommunity={() =>
           openCommunity({
@@ -797,7 +968,7 @@ export default function App() {
       <StatusBar style="light" />
       {isAuthLoading ? (
         <View style={styles.authPage}>
-          <Text style={styles.authBrand}>Watchlight</Text>
+          <Text style={styles.authBrand}>It’s Showtime</Text>
           <Text style={styles.authTitle}>Opening your watch home...</Text>
         </View>
       ) : !isAuthed ? (
@@ -817,29 +988,37 @@ export default function App() {
           onFinish={finishOnboarding}
         />
       ) : (
-        <View style={styles.app}>
+        <View style={[styles.app, isCompact && styles.appCompact, isTablet && styles.appTablet, isDesktop && styles.appDesktop]}>
           <ScreenHeader
             title={titleForPath()}
             onOpenSearch={() => navigate('/search')}
             onOpenNotifications={() => navigate('/notifications')}
           />
 
-          <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
+          <ScrollView
+            contentContainerStyle={[
+              styles.content,
+              isCompact && styles.contentCompact,
+              isDesktop && styles.contentDesktop,
+            ]}
+            showsVerticalScrollIndicator={false}
+          >
             <Routes>
-              <Route path="/" element={<Navigate to="/shows" replace />} />
-              <Route
-                path="/search"
-                element={
-                  <SearchPage
-                    onBack={() => navigate(-1)}
-                    results={trackedSearchResults}
-                    selectedGenres={selectedGenres}
-                    selectedServices={selectedServices}
-                    onToggleResult={toggleSearchResult}
-                    onSearch={handleCatalogSearch}
-                  />
-                }
-              />
+                <Route path="/" element={<Navigate to="/shows" replace />} />
+                <Route
+                  path="/search"
+                  element={
+                    <SearchPage
+                      onBack={() => navigate(-1)}
+                      results={trackedSearchResults}
+                      selectedGenres={selectedGenres}
+                      selectedServices={selectedServices}
+                      onToggleResult={toggleSearchResult}
+                      onSelectResult={openSearchResult}
+                      onSearch={handleCatalogSearch}
+                    />
+                  }
+                />
               <Route
                 path="/notifications"
                 element={
@@ -874,6 +1053,28 @@ export default function App() {
                       context={communityContext}
                       communityComments={communityComments}
                       onBack={() => navigate(-1)}
+                      onSubmitComment={async (body, mood) => {
+                        if (!currentUser || !communityContext) return;
+                        await createCommunityComment({
+                          userId: currentUser.id,
+                          context: { kind: communityContext.kind, title: communityContext.title },
+                          body,
+                          mood,
+                        });
+                        const refreshedComments = await getCommunityComments({
+                          kind: communityContext.kind,
+                          title: communityContext.title,
+                        });
+                        setCommunityComments(refreshedComments);
+                        await createNotification({
+                          userId: currentUser.id,
+                          type: 'Reply',
+                          title: 'Comment posted',
+                          body: `Your reaction is now live on ${communityContext.title}.`,
+                          deepLink: '/community',
+                        });
+                        await refreshNotifications(currentUser.id);
+                      }}
                     />
                   ) : (
                     <Navigate to="/shows" replace />
@@ -906,7 +1107,20 @@ export default function App() {
                     onBack={() => navigate('/library')}
                     onCreateList={(list) => {
                       setTrackedLists((lists) => [list, ...lists]);
-                      if (currentUser) saveCustomList(currentUser.id, list.title).catch(() => undefined);
+                      if (currentUser) {
+                        saveCustomList(currentUser.id, list.title)
+                          .then(() =>
+                            createNotification({
+                              userId: currentUser.id,
+                              type: 'List',
+                              title: `${list.title} created`,
+                              body: 'Your new list is ready for titles.',
+                              deepLink: '/lists',
+                            })
+                          )
+                          .then(() => Promise.all([refreshLists(currentUser.id), refreshNotifications(currentUser.id)]))
+                          .catch(() => undefined);
+                      }
                     }}
                     onTogglePrivacy={(title) =>
                     {
@@ -962,10 +1176,27 @@ export default function App() {
               />
               <Route
                 path="/discover"
-                element={<DiscoverQueue item={activeDiscovery} nextItems={nextDiscoveries} onAdvance={() => setQueueIndex((index) => index + 1)} />}
+                element={
+                  <DiscoverQueue
+                    item={activeDiscovery}
+                    nextItems={nextDiscoveries}
+                    onAdvance={() => setQueueIndex((index) => index + 1)}
+                    onAdd={(item) => addShowResultToLibrary(mapDiscoverToSearchResult(item))}
+                    onOpen={(item) => openSearchResult(mapDiscoverToSearchResult(item))}
+                  />
+                }
               />
               <Route path="/calendar" element={<UpcomingPage groups={trackedUpcomingGroups} onToggleReminder={toggleReminder} />} />
-              <Route path="/library" element={<LibraryPage shows={trackedLibraryShows} onOpenLists={() => navigate('/lists')} />} />
+              <Route
+                path="/library"
+                element={
+                  <LibraryPage
+                    shows={trackedLibraryShows}
+                    onOpenLists={() => navigate('/lists')}
+                    onSelectShow={(show) => navigate(`/shows/${toSlug(show.title)}`)}
+                  />
+                }
+              />
               <Route
                 path="/profile"
                 element={
@@ -984,7 +1215,7 @@ export default function App() {
           </ScrollView>
 
           {shouldShowNav && (
-            <View style={styles.nav}>
+            <View style={[styles.nav, isDesktop && styles.navDesktop]}>
               <NavItem active={activeTab === 'shows'} label="Shows" onPress={() => navigate('/shows')} icon={Tv} />
               <NavItem active={activeTab === 'movies'} label="Movies" onPress={() => navigate('/movies')} icon={Clapperboard} />
               <NavItem active={activeTab === 'discover'} label="Discover" onPress={() => navigate('/discover')} icon={Compass} />

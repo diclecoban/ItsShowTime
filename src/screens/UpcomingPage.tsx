@@ -1,42 +1,12 @@
-import {
-  ArrowLeft,
-  Bell,
-  CalendarDays,
-  Check,
-  Library,
-  ListPlus,
-  MessageCircle,
-  Plus,
-  Play,
-  RotateCcw,
-  Search,
-  Settings,
-  Sparkles,
-  Star,
-  Tv,
-  X,
-  Zap,
-  UserRound,
-} from 'lucide-react';
-import { useState } from 'react';
-import { ImageBackground, Pressable, ScrollView, Text, TextInput, View } from 'react-native';
+import { Bell, CalendarDays, Check } from 'lucide-react';
+import { useEffect, useState } from 'react';
+import { ImageBackground, Pressable, Text, View } from 'react-native';
 
-import { EmptyState, FilterChips, MiniStat, ProgressRail, SettingRow } from '../components';
-import { achievements, comments, discoveries, favoriteShows, movies } from '../data';
-import { accent, bg, gold, ink, muted, themes } from '../theme';
+import { EmptyState } from '../components';
+import { bg, ink, muted } from '../theme';
 import { styles } from '../styles';
-import type {
-  CommunityContext,
-  CustomList,
-  DetailEpisode,
-  Episode,
-  LibraryShow,
-  Movie,
-  NotificationItem,
-  SearchResult,
-  ShowSeason,
-  UpcomingGroup,
-} from '../types';
+import { useResponsive } from '../hooks/useResponsive';
+import type { UpcomingGroup } from '../types';
 
 export function UpcomingPage({
   groups,
@@ -45,7 +15,14 @@ export function UpcomingPage({
   groups: UpcomingGroup[];
   onToggleReminder: (show: string, code: string) => void;
 }) {
+  const { isCompact } = useResponsive();
   const [activeDay, setActiveDay] = useState(groups[0]?.day ?? 'Today');
+  useEffect(() => {
+    if (groups.length && !groups.some((group) => group.day === activeDay)) {
+      setActiveDay(groups[0].day);
+    }
+  }, [activeDay, groups]);
+
   const visibleGroups = groups.filter((group) => group.day === activeDay);
   const reminderCount = groups.reduce(
     (count, group) => count + group.items.filter((item) => item.tracked).length,
@@ -74,7 +51,7 @@ export function UpcomingPage({
           >
             <Text style={[styles.calendarDayText, activeDay === group.day && styles.calendarDayTextActive]}>{group.day}</Text>
             <Text style={[styles.calendarDateText, activeDay === group.day && styles.calendarDayTextActive]}>
-              {group.date.replace('Sep ', '')}
+              {group.date === 'Queue' ? 'Queue' : group.date.replace('Sep ', '')}
             </Text>
           </Pressable>
         ))}
@@ -87,14 +64,14 @@ export function UpcomingPage({
             <Text style={styles.upcomingDate}>{group.date}</Text>
           </View>
           {group.items.map((item) => (
-            <View key={`${item.show}-${item.code}`} style={styles.upcomingCard}>
+            <View key={`${item.show}-${item.code}`} style={[styles.upcomingCard, isCompact && styles.upcomingCardCompact]}>
               <ImageBackground
                 source={{ uri: item.image }}
-                style={styles.upcomingPoster}
+                style={[styles.upcomingPoster, isCompact && styles.upcomingPosterCompact]}
                 imageStyle={styles.upcomingPosterImage}
                 resizeMode="cover"
               />
-              <View style={styles.upcomingCopy}>
+              <View style={[styles.upcomingCopy, isCompact && styles.upcomingCopyCompact]}>
                 <Text style={styles.upcomingShow}>{item.show}</Text>
                 <Text style={styles.upcomingEpisode}>{item.code} - {item.title}</Text>
                 <View style={styles.upcomingMetaRow}>
@@ -112,12 +89,14 @@ export function UpcomingPage({
           ))}
         </View>
       ))}
-      <EmptyState
-        icon={CalendarDays}
-        title="No more episodes this week"
-        body="When tracked shows announce new dates, they will land here automatically."
-        action="Find shows"
-      />
+      {groups.length === 0 && (
+        <EmptyState
+          icon={CalendarDays}
+          title="No upcoming episodes"
+          body="When tracked shows announce new dates, they will land here automatically."
+          action="Find shows"
+        />
+      )}
     </View>
   );
 }
