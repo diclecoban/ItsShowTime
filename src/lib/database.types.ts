@@ -13,6 +13,7 @@ export type Database = {
           language: string;
           theme: string;
           spoiler_mode: 'strict' | 'moderate' | 'off';
+          is_admin: boolean;
           created_at: string;
           updated_at: string;
         };
@@ -41,6 +42,9 @@ export type Database = {
           status: string | null;
           first_air_date: string | null;
           average_rating: number | null;
+          import_status: 'pending' | 'processing' | 'ready' | 'failed';
+          import_error: string | null;
+          last_imported_at: string | null;
           created_at: string;
           updated_at: string;
         };
@@ -168,6 +172,23 @@ export type Database = {
         };
         Update: Partial<Database['public']['Tables']['movie_watch_status']['Insert']>;
       };
+      watch_sessions: {
+        Row: {
+          id: string;
+          user_id: string;
+          media_type: 'show' | 'movie';
+          episode_id: string | null;
+          movie_id: string | null;
+          started_at: string;
+          ended_at: string | null;
+          duration_minutes: number | null;
+        };
+        Insert: Partial<Database['public']['Tables']['watch_sessions']['Row']> & {
+          user_id: string;
+          media_type: 'show' | 'movie';
+        };
+        Update: Partial<Database['public']['Tables']['watch_sessions']['Insert']>;
+      };
       lists: {
         Row: {
           id: string;
@@ -198,6 +219,70 @@ export type Database = {
         };
         Update: Partial<Database['public']['Tables']['list_items']['Insert']>;
       };
+      comments: {
+        Row: {
+          id: string;
+          user_id: string;
+          media_type: 'show' | 'movie';
+          show_id: string | null;
+          movie_id: string | null;
+          episode_id: string | null;
+          body: string;
+          spoiler_level: string;
+          status: 'visible' | 'reported' | 'hidden';
+          report_count: number;
+          created_at: string;
+          updated_at: string;
+        };
+        Insert: Partial<Database['public']['Tables']['comments']['Row']> & {
+          user_id: string;
+          media_type: 'show' | 'movie';
+          body: string;
+        };
+        Update: Partial<Database['public']['Tables']['comments']['Insert']>;
+      };
+      comment_reports: {
+        Row: {
+          id: string;
+          comment_id: string;
+          user_id: string;
+          reason: string;
+          created_at: string;
+        };
+        Insert: Partial<Database['public']['Tables']['comment_reports']['Row']> & {
+          comment_id: string;
+          user_id: string;
+        };
+        Update: Partial<Database['public']['Tables']['comment_reports']['Insert']>;
+      };
+      comment_likes: {
+        Row: {
+          comment_id: string;
+          user_id: string;
+          created_at: string;
+        };
+        Insert: Partial<Database['public']['Tables']['comment_likes']['Row']> & {
+          comment_id: string;
+          user_id: string;
+        };
+        Update: Partial<Database['public']['Tables']['comment_likes']['Insert']>;
+      };
+      notification_preferences: {
+        Row: {
+          user_id: string;
+          reminders: boolean;
+          upcoming: boolean;
+          replies: boolean;
+          list_activity: boolean;
+          product_updates: boolean;
+          created_at: string;
+          updated_at: string;
+        };
+        Insert: Partial<Database['public']['Tables']['notification_preferences']['Row']> & {
+          user_id: string;
+        };
+        Update: Partial<Database['public']['Tables']['notification_preferences']['Insert']>;
+      };
       notifications: {
         Row: {
           id: string;
@@ -206,6 +291,7 @@ export type Database = {
           title: string;
           body: string | null;
           deep_link: string | null;
+          dedupe_key?: string;
           read_at: string | null;
           created_at: string;
         };
@@ -215,6 +301,26 @@ export type Database = {
           title: string;
         };
         Update: Partial<Database['public']['Tables']['notifications']['Insert']>;
+      };
+      search_cache: {
+        Row: {
+          id: string;
+          query: string;
+          media_type: string;
+          source: string;
+          payload: Json;
+          result_count: number;
+          expires_at: string;
+          created_at: string;
+          updated_at: string;
+        };
+        Insert: Partial<Database['public']['Tables']['search_cache']['Row']> & {
+          query: string;
+          media_type: string;
+          source: string;
+          payload: Json;
+        };
+        Update: Partial<Database['public']['Tables']['search_cache']['Insert']>;
       };
       reminders: {
         Row: {
@@ -231,6 +337,27 @@ export type Database = {
           remind_at: string;
         };
         Update: Partial<Database['public']['Tables']['reminders']['Insert']>;
+      };
+      catalog_import_jobs: {
+        Row: {
+          id: string;
+          show_id: string;
+          source: string;
+          external_id: number;
+          status: 'pending' | 'processing' | 'ready' | 'failed';
+          error: string | null;
+          attempts: number;
+          created_by: string | null;
+          created_at: string;
+          updated_at: string;
+          started_at: string | null;
+          finished_at: string | null;
+        };
+        Insert: Partial<Database['public']['Tables']['catalog_import_jobs']['Row']> & {
+          show_id: string;
+          external_id: number;
+        };
+        Update: Partial<Database['public']['Tables']['catalog_import_jobs']['Insert']>;
       };
       account_deletion_requests: {
         Row: {

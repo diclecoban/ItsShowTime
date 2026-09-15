@@ -13,6 +13,7 @@ export function ShowDetail({
   seasons,
   isLoading,
   error,
+  syncStatus,
   lists,
   onBack,
   onOpenCommunity,
@@ -25,6 +26,7 @@ export function ShowDetail({
   seasons: ShowSeason[];
   isLoading?: boolean;
   error?: string;
+  syncStatus?: 'syncing' | 'ready' | 'failed';
   lists: CustomList[];
   onBack: () => void;
   onOpenCommunity: () => void;
@@ -138,6 +140,22 @@ export function ShowDetail({
           total={detailEpisodes.length}
           progress={detailEpisodes.length ? Math.round((detailEpisodes.filter((item) => item.watched).length / detailEpisodes.length) * 100) : 0}
         />
+        <View style={styles.syncStatusRow}>
+          <View
+            style={[
+              styles.syncStatusDot,
+              syncStatus === 'ready' && styles.syncStatusDotReady,
+              syncStatus === 'failed' && styles.syncStatusDotFailed,
+            ]}
+          />
+          <Text style={styles.syncStatusText}>
+            {syncStatus === 'ready'
+              ? 'Live episode data is ready'
+              : syncStatus === 'failed'
+                ? 'Episode sync needs a retry'
+                : 'Syncing episodes from TVmaze'}
+          </Text>
+        </View>
       </View>
 
       <Text style={styles.sectionTitle}>Episodes</Text>

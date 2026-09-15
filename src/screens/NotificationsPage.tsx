@@ -1,5 +1,5 @@
 import { ArrowLeft, Bell, Check } from 'lucide-react';
-import { useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { Pressable, Text, View } from 'react-native';
 
 import { EmptyState, FilterChips } from '../components';
@@ -19,23 +19,35 @@ export function NotificationsPage({
   onToggleRead: (id: string) => void;
 }) {
   const [activeFilter, setActiveFilter] = useState('All');
-  const unreadCount = notifications.filter((notification) => notification.unread).length;
-  const filteredNotifications = notifications.filter((notification) => {
-    if (activeFilter === 'Unread') {
-      return notification.unread;
-    }
+  const [visibleNotificationCount, setVisibleNotificationCount] = useState(20);
+  const unreadCount = useMemo(() => notifications.filter((notification) => notification.unread).length, [notifications]);
+  const filteredNotifications = useMemo(
+    () =>
+      notifications.filter((notification) => {
+        if (activeFilter === 'Unread') return notification.unread;
+        if (activeFilter === 'Replies') return notification.type === 'Reply';
+        if (activeFilter === 'Reminders') return notification.type === 'Reminder';
+        if (activeFilter === 'Upcoming') return notification.type === 'Upcoming';
+        return true;
+      }),
+    [activeFilter, notifications]
+  );
+  const filterCounts = useMemo(
+    () => ({
+      All: notifications.length,
+      Unread: unreadCount,
+      Replies: notifications.filter((notification) => notification.type === 'Reply').length,
+      Reminders: notifications.filter((notification) => notification.type === 'Reminder').length,
+      Upcoming: notifications.filter((notification) => notification.type === 'Upcoming').length,
+    }),
+    [notifications, unreadCount]
+  );
+  const visibleNotifications = filteredNotifications.slice(0, visibleNotificationCount);
+  const hasMoreNotifications = filteredNotifications.length > visibleNotifications.length;
 
-    if (activeFilter === 'Replies') {
-      return notification.type === 'Reply';
-    }
-
-    return true;
-  });
-  const filterCounts = {
-    All: notifications.length,
-    Unread: unreadCount,
-    Replies: notifications.filter((notification) => notification.type === 'Reply').length,
-  };
+  useEffect(() => {
+    setVisibleNotificationCount(20);
+  }, [activeFilter]);
 
   return (
     <View>
@@ -62,7 +74,7 @@ export function NotificationsPage({
       </Pressable>
 
       <View style={styles.notificationTabs}>
-        {['All', 'Unread', 'Replies'].map((filter) => (
+        {['All', 'Unread', 'Replies', 'Reminders', 'Upcoming'].map((filter) => (
           <Pressable key={filter} onPress={() => setActiveFilter(filter)}>
             <Text style={activeFilter === filter ? styles.notificationTabActive : styles.notificationTab}>
               {filter} {filterCounts[filter as keyof typeof filterCounts]}
@@ -72,7 +84,7 @@ export function NotificationsPage({
       </View>
 
       <View style={styles.notificationList}>
-        {filteredNotifications.map(({ id, type, title, body, time, unread, icon: Icon, tone }) => (
+        {visibleNotifications.map(({ id, type, title, body, time, unread, icon: Icon, tone }) => (
           <View key={`${type}-${title}`} style={[styles.notificationCard, unread && styles.notificationCardUnread]}>
             {unread && <View style={styles.notificationAccentBar} />}
             <View style={[styles.notificationIcon, { backgroundColor: tone }]}>
@@ -97,6 +109,11 @@ export function NotificationsPage({
             {unread && <View style={styles.unreadDot} />}
           </View>
         ))}
+        {hasMoreNotifications ? (
+          <Pressable style={styles.adminWideActionButton} onPress={() => setVisibleNotificationCount((count) => count + 20)}>
+            <Text style={styles.adminActionText}>Load more</Text>
+          </Pressable>
+        ) : null}
         {filteredNotifications.length === 0 && (
           <EmptyState
             icon={Bell}

@@ -13,7 +13,7 @@ export function UpcomingPage({
   onToggleReminder,
 }: {
   groups: UpcomingGroup[];
-  onToggleReminder: (show: string, code: string) => void;
+  onToggleReminder: (item: UpcomingGroup['items'][number]) => void;
 }) {
   const { isCompact } = useResponsive();
   const [activeDay, setActiveDay] = useState(groups[0]?.day ?? 'Today');
@@ -24,6 +24,10 @@ export function UpcomingPage({
   }, [activeDay, groups]);
 
   const visibleGroups = groups.filter((group) => group.day === activeDay);
+  const formatReminderTime = (value?: string | null) =>
+    value
+      ? `Alert ${new Date(value).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}`
+      : 'Alert set';
   const reminderCount = groups.reduce(
     (count, group) => count + group.items.filter((item) => item.tracked).length,
     0
@@ -76,12 +80,12 @@ export function UpcomingPage({
                 <Text style={styles.upcomingEpisode}>{item.code} - {item.title}</Text>
                 <View style={styles.upcomingMetaRow}>
                   <Text style={styles.platformPill}>{item.platform}</Text>
-                  <Text style={styles.upcomingTime}>{item.time}</Text>
+                  <Text style={styles.upcomingTime}>{item.tracked ? formatReminderTime(item.remindAt) : item.time}</Text>
                 </View>
               </View>
               <Pressable
                 style={[styles.reminderButton, item.tracked && styles.reminderButtonActive]}
-                onPress={() => onToggleReminder(item.show, item.code)}
+                onPress={() => onToggleReminder(item)}
               >
                 {item.tracked ? <Check color={bg} size={18} strokeWidth={3} /> : <Bell color={ink} size={18} />}
               </Pressable>

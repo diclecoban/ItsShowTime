@@ -9,21 +9,16 @@ import { styles } from '../styles';
 export function OnboardingPage({
   selectedGenres,
   selectedServices,
-  selectedStarterShows,
   onToggleGenre,
   onToggleService,
-  onToggleStarterShow,
   onFinish,
 }: {
   selectedGenres: string[];
   selectedServices: string[];
-  selectedStarterShows: string[];
   onToggleGenre: (genre: string) => void;
   onToggleService: (service: string) => void;
-  onToggleStarterShow: (title: string) => void;
   onFinish: () => Promise<void> | void;
 }) {
-  const starterShows = ['Severance', 'The Bear', 'Dark', 'Slow Horses', 'Station Eleven', 'Past Lives'];
   const services = ['Netflix', 'Apple TV+', 'Max', 'Hulu'];
   const genres = ['Drama', 'Mystery', 'Comedy', 'Sci-fi', 'Thriller', 'Limited'];
   const [isSaving, setIsSaving] = useState(false);
@@ -46,21 +41,6 @@ export function OnboardingPage({
       <Text style={styles.onboardingBody}>
         Pick a few titles and preferences so your next episodes, calendar, and recommendations feel ready from day one.
       </Text>
-
-      <Text style={styles.onboardingSection}>Start with titles</Text>
-      <View style={styles.onboardingChips}>
-        {starterShows.map((show) => (
-          <Pressable
-            key={show}
-            style={[styles.onboardingChip, selectedStarterShows.includes(show) && styles.onboardingChipActive]}
-            onPress={() => onToggleStarterShow(show)}
-          >
-            <Text style={[styles.onboardingChipText, selectedStarterShows.includes(show) && styles.onboardingChipTextActive]}>
-              {show}
-            </Text>
-          </Pressable>
-        ))}
-      </View>
 
       <Text style={styles.onboardingSection}>Favorite genres</Text>
       <View style={styles.onboardingChips}>

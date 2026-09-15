@@ -1,4 +1,4 @@
-import { ArrowLeft, MessageCircle } from 'lucide-react';
+import { ArrowLeft, Flag, Heart, MessageCircle, Trash2 } from 'lucide-react';
 import { useState } from 'react';
 import { ImageBackground, Pressable, Text, TextInput, View } from 'react-native';
 
@@ -12,11 +12,21 @@ export function CommunityPage({
   communityComments,
   onBack,
   onSubmitComment,
+  onToggleLike,
+  onDeleteComment,
+  onReportComment,
+  onLoadMore,
+  hasMoreComments,
 }: {
   context: CommunityContext;
   communityComments: CommunityComment[];
   onBack: () => void;
   onSubmitComment: (body: string, mood: string) => Promise<void>;
+  onToggleLike: (comment: CommunityComment) => Promise<void>;
+  onDeleteComment: (commentId: string) => Promise<void>;
+  onReportComment: (commentId: string) => Promise<void>;
+  onLoadMore: () => Promise<void>;
+  hasMoreComments: boolean;
 }) {
   const moods = ['Reacted', 'Loved it', 'Shocked', 'Theory'];
   const [body, setBody] = useState('');
@@ -119,11 +129,40 @@ export function CommunityPage({
                       <Text style={styles.commentUser}>{comment.user}</Text>
                       <Text style={styles.commentMood}>{comment.mood}</Text>
                     </View>
+                    {comment.status === 'reported' && (
+                      <Text style={styles.commentModerationText}>Under spoiler review</Text>
+                    )}
                     <Text style={styles.commentText}>{comment.text}</Text>
-                    <Text style={styles.commentLikes}>{comment.likes} likes</Text>
+                    <View style={styles.commentActionRow}>
+                      <Pressable style={styles.commentActionButton} onPress={() => onToggleLike(comment)}>
+                        <Heart
+                          color={comment.likedByMe ? gold : muted}
+                          fill={comment.likedByMe ? gold : 'transparent'}
+                          size={15}
+                        />
+                        <Text style={styles.commentLikes}>{comment.likes} likes</Text>
+                      </Pressable>
+                      {comment.canDelete && (
+                        <Pressable style={styles.commentActionButton} onPress={() => onDeleteComment(comment.id)}>
+                          <Trash2 color={muted} size={15} />
+                          <Text style={styles.commentLikes}>Delete</Text>
+                        </Pressable>
+                      )}
+                      {comment.canReport && (
+                        <Pressable style={styles.commentActionButton} onPress={() => onReportComment(comment.id)}>
+                          <Flag color={muted} size={15} />
+                          <Text style={styles.commentLikes}>Report</Text>
+                        </Pressable>
+                      )}
+                    </View>
                   </View>
                 </View>
               ))}
+              {hasMoreComments ? (
+                <Pressable style={styles.adminWideActionButton} onPress={onLoadMore}>
+                  <Text style={styles.adminActionText}>Load more</Text>
+                </Pressable>
+              ) : null}
             </View>
           ) : (
             <EmptyState

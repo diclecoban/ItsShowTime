@@ -1,4 +1,4 @@
-import { Plus, RotateCcw, Sparkles, X } from 'lucide-react';
+import { Flame, Plus, RotateCcw, Sparkles, Stars, X } from 'lucide-react';
 import { ImageBackground, Pressable, Text, View } from 'react-native';
 
 import { EmptyState } from '../components';
@@ -21,6 +21,12 @@ export function DiscoverQueue({
   onOpen: (item: DiscoverItem) => void | Promise<void>;
 }) {
   const { isCompact } = useResponsive();
+  const moodPicks = ['Dark twists', 'Cozy drama', 'Sharp comedy', 'One more episode'];
+  const insightCards = [
+    { label: 'Taste match', value: item?.match ?? 'New', icon: Sparkles },
+    { label: 'Best fit', value: item?.fit[0] ?? 'Series', icon: Stars },
+    { label: 'Queue heat', value: nextItems.length ? `${nextItems.length + 1} picks` : 'Fresh', icon: Flame },
+  ];
 
   if (!item) {
     return (
@@ -64,6 +70,22 @@ export function DiscoverQueue({
         </Pressable>
       </ImageBackground>
 
+      <View style={styles.discoverMoodRail}>
+        {moodPicks.map((mood) => (
+          <Text key={mood} style={styles.discoverMoodPill}>{mood}</Text>
+        ))}
+      </View>
+
+      <View style={styles.discoverInsightGrid}>
+        {insightCards.map(({ label, value, icon: Icon }) => (
+          <View key={label} style={styles.discoverInsightCard}>
+            <Icon color={gold} size={18} />
+            <Text style={styles.discoverInsightValue}>{value}</Text>
+            <Text style={styles.discoverInsightLabel}>{label}</Text>
+          </View>
+        ))}
+      </View>
+
       <View style={styles.queueActions}>
         <Pressable style={styles.queueAction} onPress={onAdvance}>
           <X color={ink} size={24} />
@@ -84,7 +106,10 @@ export function DiscoverQueue({
         </Pressable>
       </View>
 
-      <Text style={styles.sectionTitle}>Up next</Text>
+      <View style={styles.sectionHeaderRow}>
+        <Text style={styles.sectionTitle}>Up next</Text>
+        <Text style={styles.sectionHint}>Curated from your watch taste</Text>
+      </View>
       <View style={[styles.nextRail, isCompact && styles.nextRailCompact]}>
         {nextItems.map((nextItem) => (
           <Pressable key={nextItem.title} style={[styles.nextCard, isCompact && styles.nextCardCompact]} onPress={() => onOpen(nextItem)}>

@@ -1,5 +1,5 @@
 import { ArrowLeft, Check, Lock, Plus, Search, Sparkles, Tv, X } from 'lucide-react';
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { ImageBackground, Pressable, Text, TextInput, View } from 'react-native';
 
 import { EmptyState, FilterChips } from '../components';
@@ -39,34 +39,54 @@ export function SearchPage({
   const [viewMode, setViewMode] = useState<'List' | 'Grid'>('List');
   const [selectedActor, setSelectedActor] = useState<SearchResult | null>(null);
   const [addedTitle, setAddedTitle] = useState('');
+  const [feedbackMode, setFeedbackMode] = useState<'success' | 'error'>('success');
   const [isFeedbackLeaving, setIsFeedbackLeaving] = useState(false);
+  const [visibleResultCount, setVisibleResultCount] = useState(16);
 
   useEffect(() => {
-    const searchTimer = window.setTimeout(() => onSearch?.(query, activeFilter), 250);
+    const searchTimer = window.setTimeout(() => onSearch?.(query, activeFilter), 400);
     return () => window.clearTimeout(searchTimer);
   }, [activeFilter, onSearch, query]);
+
+  useEffect(() => {
+    setVisibleResultCount(16);
+  }, [activeFilter, activeGenre, activePlatform, query]);
 
   const genreFilters = ['All', ...selectedGenres];
   const platformFilters = ['All', ...selectedServices];
   const normalizedQuery = query.trim().toLowerCase();
-  const filteredResults = results.filter((result) => {
-    const matchesType = activeFilter === 'All' || result.type === activeFilter;
-    const matchesGenre = activeGenre === 'All' || result.meta.includes(activeGenre);
-    const matchesPlatform = activePlatform === 'All' || result.platform === activePlatform;
-    const matchesQuery =
-      normalizedQuery.length === 0 ||
-      [result.title, result.meta, result.platform].some((value) => value.toLowerCase().includes(normalizedQuery));
+  const filteredResults = useMemo(
+    () =>
+      results.filter((result) => {
+        const matchesType = activeFilter === 'All' || result.type === activeFilter;
+        const matchesGenre = activeGenre === 'All' || result.meta.includes(activeGenre);
+        const matchesPlatform = activePlatform === 'All' || result.platform === activePlatform;
+        const matchesQuery =
+          normalizedQuery.length === 0 ||
+          [result.title, result.meta, result.platform].some((value) => value.toLowerCase().includes(normalizedQuery));
 
-    return matchesType && matchesGenre && matchesPlatform && matchesQuery;
-  });
+        return matchesType && matchesGenre && matchesPlatform && matchesQuery;
+      }),
+    [activeFilter, activeGenre, activePlatform, normalizedQuery, results]
+  );
+  const visibleResults = filteredResults.slice(0, visibleResultCount);
+  const hasMoreResults = filteredResults.length > visibleResults.length;
 
   const addResult = (title: string) => {
-    Promise.resolve(onToggleResult(title)).then(() => {
-      setAddedTitle(title);
-      setIsFeedbackLeaving(false);
-      window.setTimeout(() => setIsFeedbackLeaving(true), 1600);
-      window.setTimeout(() => setAddedTitle(''), 2150);
-    });
+    Promise.resolve(onToggleResult(title))
+      .then(() => {
+        setFeedbackMode('success');
+        setAddedTitle(title);
+      })
+      .catch(() => {
+        setFeedbackMode('error');
+        setAddedTitle(title);
+      })
+      .finally(() => {
+        setIsFeedbackLeaving(false);
+        window.setTimeout(() => setIsFeedbackLeaving(true), 1600);
+        window.setTimeout(() => setAddedTitle(''), 2150);
+      });
   };
 
   return (
@@ -90,11 +110,19 @@ export function SearchPage({
       {addedTitle && (
         <View style={[styles.searchFeedbackOverlay, isFeedbackLeaving && styles.searchFeedbackOverlayLeaving]}>
           <View style={[styles.searchFeedback, isFeedbackLeaving && styles.searchFeedbackLeaving]}>
-            <View style={styles.searchFeedbackIcon}>
-              <Check color={bg} size={26} strokeWidth={3} />
+            <View style={[styles.searchFeedbackIcon, feedbackMode === 'error' && styles.searchFeedbackIconError]}>
+              {feedbackMode === 'success' ? (
+                <Check color={bg} size={26} strokeWidth={3} />
+              ) : (
+                <X color={bg} size={26} strokeWidth={3} />
+              )}
             </View>
-            <Text style={styles.searchFeedbackTitle}>Added to Library</Text>
-            <Text style={styles.searchFeedbackText}>{addedTitle}</Text>
+            <Text style={styles.searchFeedbackTitle}>
+              {feedbackMode === 'success' ? 'Added to Library' : 'Could not add'}
+            </Text>
+            <Text style={styles.searchFeedbackText}>
+              {feedbackMode === 'success' ? addedTitle : `${addedTitle} can be retried from search.`}
+            </Text>
           </View>
         </View>
       )}
@@ -167,7 +195,7 @@ export function SearchPage({
         />
       ) : (
         <View style={viewMode === 'Grid' && !isCompact ? styles.searchGridResults : styles.searchResults}>
-          {filteredResults.map((result) => (
+          {visibleResults.map((result) => (
             <Pressable
               key={result.title}
               style={viewMode === 'Grid' && !isCompact ? styles.searchGridCard : styles.searchResultCard}
@@ -220,6 +248,11 @@ export function SearchPage({
               </Pressable>
             </Pressable>
           ))}
+          {hasMoreResults ? (
+            <Pressable style={styles.adminWideActionButton} onPress={() => setVisibleResultCount((count) => count + 16)}>
+              <Text style={styles.adminActionText}>Load more</Text>
+            </Pressable>
+          ) : null}
         </View>
       )}
     </View>

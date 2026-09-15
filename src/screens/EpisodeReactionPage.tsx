@@ -1,4 +1,4 @@
-import { ArrowLeft, Check, MessageCircle, Star } from 'lucide-react';
+import { ArrowLeft, Check, Heart, MessageCircle, ShieldCheck, Sparkles, Star } from 'lucide-react';
 import { useState } from 'react';
 import { ImageBackground, Pressable, Text, TextInput, View } from 'react-native';
 
@@ -19,9 +19,14 @@ export function EpisodeReactionPage({
 }) {
   const feelings = ['Mind blown', 'Tense', 'Funny', 'Heavy', 'Confused', 'Loved it'];
   const characters = ['Mark', 'Helly', 'Irving', 'Dylan'];
+  const quickReactions = ['Perfect twist', 'Need answers', 'Best scene', 'Too slow', 'Rewatch worthy'];
+  const spoilerComforts = ['Hide spoilers', 'Episode-only', 'Open comments'];
   const [rating, setRating] = useState(4);
   const [selectedMood, setSelectedMood] = useState(feelings[0]);
+  const [quickReaction, setQuickReaction] = useState(quickReactions[0]);
+  const [spoilerComfort, setSpoilerComfort] = useState(spoilerComforts[0]);
   const [favoriteCharacter, setFavoriteCharacter] = useState(characters[1]);
+  const [favoriteMoment, setFavoriteMoment] = useState('');
   const [note, setNote] = useState('');
   const [isSaving, setIsSaving] = useState(false);
   const [saveMessage, setSaveMessage] = useState('');
@@ -33,7 +38,23 @@ export function EpisodeReactionPage({
     setSaveMessage('');
 
     try {
-      await onSave({ rating, mood: selectedMood, favoriteCharacter, note: note.trim() });
+      const composedNote = [
+        quickReaction ? `Quick reaction: ${quickReaction}` : '',
+        favoriteMoment.trim() ? `Favorite moment: ${favoriteMoment.trim()}` : '',
+        note.trim(),
+      ]
+        .filter(Boolean)
+        .join('\n\n');
+
+      await onSave({
+        rating,
+        mood: selectedMood,
+        favoriteCharacter,
+        favoriteMoment: favoriteMoment.trim(),
+        quickReaction,
+        spoilerComfort,
+        note: composedNote,
+      });
       setSaveMessage('Reaction saved');
     } catch (error) {
       setSaveMessage(error instanceof Error ? error.message : 'Could not save reaction');
@@ -66,7 +87,16 @@ export function EpisodeReactionPage({
       </ImageBackground>
 
       <View style={styles.reactionPanel}>
-        <Text style={styles.reactionSectionLabel}>Your rating</Text>
+        <View style={styles.reactionPanelTop}>
+          <View>
+            <Text style={styles.reactionSectionLabel}>Your rating</Text>
+            <Text style={styles.reactionPanelTitle}>{rating}.0 / 5</Text>
+          </View>
+          <View style={styles.reactionPrivacyPill}>
+            <ShieldCheck color={bg} size={15} />
+            <Text style={styles.reactionPrivacyText}>{spoilerComfort}</Text>
+          </View>
+        </View>
         <View style={styles.reactionStars}>
           {[1, 2, 3, 4, 5].map((star) => (
             <Pressable key={star} onPress={() => setRating(star)}>
@@ -74,6 +104,22 @@ export function EpisodeReactionPage({
             </Pressable>
           ))}
         </View>
+      </View>
+
+      <Text style={styles.sectionTitle}>Quick reaction</Text>
+      <View style={styles.quickReactionGrid}>
+        {quickReactions.map((reaction) => (
+          <Pressable
+            key={reaction}
+            style={[styles.quickReactionCard, quickReaction === reaction && styles.quickReactionCardActive]}
+            onPress={() => setQuickReaction(reaction)}
+          >
+            <Sparkles color={quickReaction === reaction ? bg : gold} size={16} />
+            <Text style={[styles.quickReactionText, quickReaction === reaction && styles.quickReactionTextActive]}>
+              {reaction}
+            </Text>
+          </Pressable>
+        ))}
       </View>
 
       <Text style={styles.sectionTitle}>Episode mood</Text>
@@ -85,6 +131,19 @@ export function EpisodeReactionPage({
             onPress={() => setSelectedMood(feeling)}
           >
             <Text style={[styles.reactionChipText, selectedMood === feeling && styles.reactionChipActiveText]}>{feeling}</Text>
+          </Pressable>
+        ))}
+      </View>
+
+      <Text style={styles.sectionTitle}>Spoiler comfort</Text>
+      <View style={styles.characterRow}>
+        {spoilerComforts.map((comfort) => (
+          <Pressable
+            key={comfort}
+            style={[styles.characterPill, spoilerComfort === comfort && styles.characterPillActive]}
+            onPress={() => setSpoilerComfort(comfort)}
+          >
+            <Text style={[styles.characterText, spoilerComfort === comfort && styles.characterTextActive]}>{comfort}</Text>
           </Pressable>
         ))}
       </View>
@@ -101,6 +160,15 @@ export function EpisodeReactionPage({
           </Pressable>
         ))}
       </View>
+
+      <Text style={styles.sectionTitle}>Favorite moment</Text>
+      <TextInput
+        style={styles.favoriteMomentInput}
+        value={favoriteMoment}
+        onChangeText={setFavoriteMoment}
+        placeholder="A line, twist, scene, or tiny detail..."
+        placeholderTextColor={muted}
+      />
 
       <Text style={styles.sectionTitle}>Private note</Text>
       <TextInput
@@ -119,6 +187,7 @@ export function EpisodeReactionPage({
           <Text style={styles.commentsTitle}>Unlocked after watching</Text>
           <Text style={styles.commentsBody}>Join reactions from people who are exactly at this episode.</Text>
         </View>
+        <Heart color={gold} size={20} />
       </Pressable>
 
       {saveMessage ? <Text style={styles.reactionSaveMessage}>{saveMessage}</Text> : null}

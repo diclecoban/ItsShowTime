@@ -4,6 +4,7 @@ export type Tab = 'shows' | 'movies' | 'discover' | 'calendar' | 'library' | 'pr
 
 export type Episode = {
   id: number;
+  backendId?: string;
   show: string;
   code: string;
   title: string;
@@ -36,6 +37,8 @@ export type ShowDetailInfo = {
   title: string;
   overview: string;
   status: string;
+  importStatus?: 'pending' | 'processing' | 'ready' | 'failed';
+  importError?: string | null;
   posterUrl: string;
   backdropUrl?: string | null;
   averageRating: number;
@@ -92,10 +95,13 @@ export type UpcomingGroup = {
   day: string;
   date: string;
   items: Array<{
+    episodeId?: string;
     show: string;
     code: string;
     title: string;
     time: string;
+    airDate?: string | null;
+    remindAt?: string | null;
     platform: string;
     tracked: boolean;
     image: string;
@@ -104,6 +110,7 @@ export type UpcomingGroup = {
 
 export type CustomList = {
   title: string;
+  description?: string;
   count: string;
   privacy: string;
   images: string[];
@@ -129,12 +136,26 @@ export type NotificationItem = {
   tone: string;
 };
 
+export type NotificationPreferences = {
+  reminders: boolean;
+  upcoming: boolean;
+  replies: boolean;
+  listActivity: boolean;
+  productUpdates: boolean;
+};
+
 export type CommunityComment = {
   id: string;
   user: string;
   mood: string;
   text: string;
   likes: number;
+  likedByMe?: boolean;
+  canDelete?: boolean;
+  canReport?: boolean;
+  status?: 'visible' | 'reported' | 'hidden';
+  reportCount?: number;
+  createdAt?: string;
 };
 
 export type RecentActivity = {
@@ -144,9 +165,89 @@ export type RecentActivity = {
   time: string;
 };
 
+export type ProfileStats = {
+  episodes: number;
+  totalTime: string;
+  streak: string;
+  libraryShows: number;
+  completedShows: number;
+  reactions: number;
+  comments: number;
+};
+
+export type UserProfile = {
+  displayName: string;
+  username: string;
+  theme: string;
+  spoilerMode: 'strict' | 'moderate' | 'off';
+  isAdmin: boolean;
+};
+
+export type AdminSummary = {
+  operations?: {
+    failedJobs: number;
+    pendingJobs: number;
+    processingJobs: number;
+    cacheHits24h: number;
+    cacheMisses24h: number;
+    cacheHitRate24h: number;
+    rateLimitedSearches24h: number;
+    edgeErrors24h: number;
+    slowEvents24h: number;
+    avgSearchMs24h: number;
+    avgImportMs24h: number;
+  };
+  edgeEvents?: Array<{
+    id: string;
+    functionName: string;
+    eventType: string;
+    statusCode?: number | null;
+    durationMs?: number | null;
+    createdAt: string;
+    metadata?: Record<string, unknown>;
+  }>;
+  importJobs: Array<{
+    id: string;
+    title: string;
+    status: 'pending' | 'processing' | 'ready' | 'failed';
+    source: string;
+    attempts: number;
+    error?: string | null;
+  }>;
+  reportedComments: Array<{
+    id: string;
+    title: string;
+    body: string;
+    reportCount: number;
+    status: 'visible' | 'reported' | 'hidden';
+  }>;
+  deletionRequests: Array<{
+    id: string;
+    reason?: string | null;
+    processedAt?: string | null;
+    createdAt: string;
+  }>;
+  cacheEntries: Array<{
+    id: string;
+    query: string;
+    resultCount: number;
+    expiresAt: string;
+  }>;
+  support?: {
+    title: string;
+    currentAmountCents: number;
+    targetAmountCents: number;
+    currency: string;
+    openedIntents: number;
+  };
+};
+
 export type EpisodeReaction = {
   rating: number;
   mood: string;
   favoriteCharacter: string;
+  favoriteMoment?: string;
+  quickReaction?: string;
+  spoilerComfort?: string;
   note: string;
 };

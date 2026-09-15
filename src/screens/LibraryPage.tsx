@@ -1,5 +1,5 @@
-import { Library, ListPlus } from 'lucide-react';
-import { useState } from 'react';
+import { Grid2X2, Library, List, ListPlus, SlidersHorizontal } from 'lucide-react';
+import { useEffect, useMemo, useState } from 'react';
 import { ImageBackground, Pressable, Text, View } from 'react-native';
 
 import { EmptyState, ProgressRail } from '../components';
@@ -19,20 +19,64 @@ export function LibraryPage({
 }) {
   const { isCompact } = useResponsive();
   const filters = ['All', 'Watching', 'Paused', 'Finished', 'Dropped'];
+  const sortOptions = ['Progress', 'A-Z', 'Recently watched'];
   const [activeFilter, setActiveFilter] = useState('All');
-  const filteredShows =
-    activeFilter === 'All' ? shows : shows.filter((show) => show.status === activeFilter);
+  const [activeSort, setActiveSort] = useState(sortOptions[0]);
+  const [viewMode, setViewMode] = useState<'List' | 'Grid'>('List');
+  const [visibleShowCount, setVisibleShowCount] = useState(18);
+  const watchedEpisodes = shows.reduce((total, show) => total + show.watchedEpisodes, 0);
+  const totalEpisodes = shows.reduce((total, show) => total + show.totalEpisodes, 0);
+  const staleShows = useMemo(
+    () => shows.filter((show) => show.status === 'Watching' && show.progress < 25).slice(0, 3),
+    [shows]
+  );
+  const filteredShows = useMemo(
+    () =>
+      [...(activeFilter === 'All' ? shows : shows.filter((show) => show.status === activeFilter))].sort((a, b) => {
+        if (activeSort === 'A-Z') return a.title.localeCompare(b.title);
+        if (activeSort === 'Recently watched') return b.watchedEpisodes - a.watchedEpisodes;
+        return b.progress - a.progress;
+      }),
+    [activeFilter, activeSort, shows]
+  );
+  const useGrid = viewMode === 'Grid' && !isCompact;
+  const visibleShows = filteredShows.slice(0, visibleShowCount);
+  const hasMoreShows = filteredShows.length > visibleShows.length;
+
+  useEffect(() => {
+    setVisibleShowCount(18);
+  }, [activeFilter, activeSort, viewMode]);
 
   return (
     <View>
-      <View style={styles.libraryHero}>
-        <Text style={styles.libraryKicker}>My library</Text>
-        <Text style={styles.libraryTitle}>{shows.length} tracked shows</Text>
-        <Text style={styles.libraryBody}>Everything you are watching, pausing, finishing, or saving for later.</Text>
-        <Pressable style={styles.openListsButton} onPress={onOpenLists}>
-          <ListPlus color={bg} size={18} />
-          <Text style={styles.openListsText}>Open lists</Text>
-        </Pressable>
+      <View style={[styles.libraryDashboard, isCompact && styles.libraryDashboardCompact]}>
+        <View style={styles.libraryHero}>
+          <Text style={styles.libraryKicker}>My library</Text>
+          <Text style={styles.libraryTitle}>{shows.length} tracked shows</Text>
+          <Text style={styles.libraryBody}>Everything you are watching, pausing, finishing, or saving for later.</Text>
+          <Pressable style={styles.openListsButton} onPress={onOpenLists}>
+            <ListPlus color={bg} size={18} />
+            <Text style={styles.openListsText}>Open lists</Text>
+          </Pressable>
+        </View>
+
+        <View style={styles.libraryDashboardPanel}>
+          <Text style={styles.libraryKicker}>Watch health</Text>
+          <Text style={styles.libraryPanelValue}>{totalEpisodes ? Math.round((watchedEpisodes / totalEpisodes) * 100) : 0}%</Text>
+          <Text style={styles.libraryBody}>{watchedEpisodes}/{totalEpisodes} episodes watched across your library.</Text>
+          <View style={styles.libraryPanelDivider} />
+          <Text style={styles.libraryPanelLabel}>Needs attention</Text>
+          {staleShows.length ? (
+            staleShows.map((show) => (
+              <Pressable key={show.title} style={styles.libraryMiniRow} onPress={() => onSelectShow(show)}>
+                <Text style={styles.libraryMiniTitle}>{show.title}</Text>
+                <Text style={styles.libraryMiniMeta}>{show.progress}%</Text>
+              </Pressable>
+            ))
+          ) : (
+            <Text style={styles.libraryMiniEmpty}>Your active shelf looks tidy.</Text>
+          )}
+        </View>
       </View>
 
       <View style={styles.libraryFilters}>
@@ -43,6 +87,25 @@ export function LibraryPage({
         ))}
       </View>
 
+      <View style={styles.libraryToolbar}>
+        <View style={styles.librarySortGroup}>
+          <SlidersHorizontal color={muted} size={17} />
+          {sortOptions.map((sort) => (
+            <Pressable key={sort} onPress={() => setActiveSort(sort)}>
+              <Text style={[styles.librarySortChip, activeSort === sort && styles.librarySortChipActive]}>{sort}</Text>
+            </Pressable>
+          ))}
+        </View>
+        <View style={styles.libraryViewToggle}>
+          <Pressable style={[styles.libraryViewButton, viewMode === 'List' && styles.libraryViewButtonActive]} onPress={() => setViewMode('List')}>
+            <List color={viewMode === 'List' ? bg : ink} size={17} />
+          </Pressable>
+          <Pressable style={[styles.libraryViewButton, viewMode === 'Grid' && styles.libraryViewButtonActive]} onPress={() => setViewMode('Grid')}>
+            <Grid2X2 color={viewMode === 'Grid' ? bg : ink} size={17} />
+          </Pressable>
+        </View>
+      </View>
+
       {filteredShows.length === 0 ? (
         <EmptyState
           icon={Library}
@@ -51,12 +114,12 @@ export function LibraryPage({
           action="Browse discover"
         />
       ) : (
-        <View style={styles.libraryList}>
-          {filteredShows.map((show) => (
-            <Pressable key={show.title} style={[styles.libraryCard, isCompact && styles.libraryCardCompact]} onPress={() => onSelectShow(show)}>
+        <View style={[styles.libraryList, useGrid && styles.libraryGrid]}>
+          {visibleShows.map((show) => (
+            <Pressable key={show.title} style={[styles.libraryCard, isCompact && styles.libraryCardCompact, useGrid && styles.libraryGridCard]} onPress={() => onSelectShow(show)}>
               <ImageBackground
                 source={{ uri: show.image }}
-                style={[styles.libraryPoster, isCompact && styles.libraryPosterCompact]}
+                style={[styles.libraryPoster, isCompact && styles.libraryPosterCompact, useGrid && styles.libraryGridPoster]}
                 imageStyle={styles.libraryPosterImage}
                 resizeMode="cover"
               />
@@ -73,6 +136,11 @@ export function LibraryPage({
               </View>
             </Pressable>
           ))}
+          {hasMoreShows ? (
+            <Pressable style={styles.adminWideActionButton} onPress={() => setVisibleShowCount((count) => count + 18)}>
+              <Text style={styles.adminActionText}>Load more</Text>
+            </Pressable>
+          ) : null}
         </View>
       )}
     </View>

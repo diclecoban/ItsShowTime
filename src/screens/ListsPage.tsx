@@ -1,5 +1,5 @@
 import { ArrowLeft, CalendarDays, ListPlus, Plus, Star } from 'lucide-react';
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { ImageBackground, Pressable, Text, TextInput, View } from 'react-native';
 
 import { EmptyState } from '../components';
@@ -21,11 +21,21 @@ export function ListsPage({
   const [selectedList, setSelectedList] = useState<CustomList | null>(null);
   const [isCreating, setIsCreating] = useState(false);
   const [newListName, setNewListName] = useState('');
+  const [newListDescription, setNewListDescription] = useState('');
+  const [visibleListCount, setVisibleListCount] = useState(16);
+
+  useEffect(() => {
+    if (!selectedList) return;
+
+    const freshList = lists.find((list) => list.title === selectedList.title);
+    if (freshList) setSelectedList(freshList);
+  }, [lists, selectedList]);
   const createList = () => {
     const title = newListName.trim() || 'Weekend watchlist';
 
     onCreateList({
       title,
+      description: newListDescription.trim() || undefined,
       count: '0 titles',
       privacy: 'Private',
       images: [],
@@ -34,7 +44,10 @@ export function ListsPage({
     setSelectedList(null);
     setIsCreating(false);
     setNewListName('');
+    setNewListDescription('');
   };
+  const visibleLists = lists.slice(0, visibleListCount);
+  const hasMoreLists = lists.length > visibleLists.length;
 
   if (selectedList) {
     return (
@@ -48,7 +61,9 @@ export function ListsPage({
           <View>
             <Text style={styles.libraryKicker}>{selectedList.privacy}</Text>
             <Text style={styles.libraryTitle}>{selectedList.title}</Text>
-            <Text style={styles.libraryBody}>{selectedList.count} saved for exactly this mood.</Text>
+            <Text style={styles.libraryBody}>
+              {selectedList.description || `${selectedList.count} saved for exactly this mood.`}
+            </Text>
           </View>
           <Pressable
             style={styles.listPrivacyToggle}
@@ -141,6 +156,13 @@ export function ListsPage({
             placeholderTextColor={muted}
             style={styles.createListInput}
           />
+          <TextInput
+            value={newListDescription}
+            onChangeText={setNewListDescription}
+            placeholder="Description"
+            placeholderTextColor={muted}
+            style={styles.createListInput}
+          />
           <View style={styles.createListActions}>
             <Pressable style={styles.createListCancel} onPress={() => setIsCreating(false)}>
               <Text style={styles.createListCancelText}>Cancel</Text>
@@ -175,7 +197,7 @@ export function ListsPage({
         />
       ) : (
         <View style={styles.customListStack}>
-          {lists.map((list) => (
+          {visibleLists.map((list) => (
           <Pressable key={list.title} style={styles.customListCard} onPress={() => setSelectedList(list)}>
             <View style={styles.listPosterStack}>
               {list.images.length ? list.images.map((image, index) => (
@@ -201,6 +223,11 @@ export function ListsPage({
             </View>
           </Pressable>
           ))}
+          {hasMoreLists ? (
+            <Pressable style={styles.adminWideActionButton} onPress={() => setVisibleListCount((count) => count + 16)}>
+              <Text style={styles.adminActionText}>Load more</Text>
+            </Pressable>
+          ) : null}
         </View>
       )}
     </View>

@@ -5,7 +5,15 @@ import { bg, gold, ink, muted } from '../theme';
 import { styles } from '../styles';
 import type { Movie } from '../types';
 
-export function MoviesPage({ movies, onSelectMovie }: { movies: Movie[]; onSelectMovie: (movie: Movie) => void }) {
+export function MoviesPage({
+  movies,
+  onSelectMovie,
+  onSupport,
+}: {
+  movies: Movie[];
+  onSelectMovie: (movie: Movie) => void;
+  onSupport: () => void;
+}) {
   return (
     <View>
       <View style={styles.movieLockedHero}>
@@ -19,7 +27,7 @@ export function MoviesPage({ movies, onSelectMovie }: { movies: Movie[]; onSelec
         </Text>
         <Pressable
           style={styles.supportUsButton}
-          onPress={() => window.open('https://buymeacoffee.com/diclesara', '_blank', 'noopener,noreferrer')}
+          onPress={onSupport}
         >
           <Text style={styles.supportUsText}>Support us</Text>
         </Pressable>

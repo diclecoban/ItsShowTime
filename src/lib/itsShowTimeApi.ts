@@ -8,8 +8,25 @@ import {
   tmdbPoster,
   type TmdbSearchItem,
 } from './tmdb';
-import { getTvmazeEpisodes, searchTvmazeShows, type TvmazeShow } from './tvmaze';
-import type { CustomList, DiscoverItem, Episode, EpisodeReaction, LibraryShow, UpcomingGroup } from '../types';
+import { searchTvmazeShows, type TvmazeShow } from './tvmaze';
+import type {
+  AdminSummary,
+  CustomList,
+  DiscoverItem,
+  Episode,
+  EpisodeReaction,
+  LibraryShow,
+  NotificationPreferences,
+  UpcomingGroup,
+} from '../types';
+
+const defaultNotificationPreferences: NotificationPreferences = {
+  reminders: true,
+  upcoming: true,
+  replies: true,
+  listActivity: true,
+  productUpdates: true,
+};
 
 export function requireSupabase() {
   if (!supabase) {
@@ -82,6 +99,22 @@ export async function getProfile(userId: string) {
   return data;
 }
 
+export async function saveProfileSettings(
+  userId: string,
+  settings: Partial<{ theme: string; spoilerMode: 'strict' | 'moderate' | 'off' }>
+) {
+  const client = requireSupabase();
+  const payload: { theme?: string; spoiler_mode?: 'strict' | 'moderate' | 'off' } = {};
+
+  if (settings.theme) payload.theme = settings.theme;
+  if (settings.spoilerMode) payload.spoiler_mode = settings.spoilerMode;
+
+  const { data, error } = await client.from('profiles').update(payload).eq('id', userId).select('*').single();
+
+  if (error) throw error;
+  return data;
+}
+
 export async function getUserPreferences(userId: string) {
   const client = requireSupabase();
   const [{ data: genreRows, error: genreError }, { data: serviceRows, error: serviceError }] = await Promise.all([
@@ -96,6 +129,46 @@ export async function getUserPreferences(userId: string) {
     genres: (genreRows ?? []).map((row) => row.genres?.name).filter(Boolean) as string[],
     services: (serviceRows ?? []).map((row) => row.platforms?.name).filter(Boolean) as string[],
   };
+}
+
+export async function getNotificationPreferences(userId: string): Promise<NotificationPreferences> {
+  const client = requireSupabase();
+  const { data, error } = await client
+    .from('notification_preferences')
+    .select('reminders, upcoming, replies, list_activity, product_updates')
+    .eq('user_id', userId)
+    .maybeSingle();
+
+  if (error) throw error;
+  if (!data) {
+    await client.from('notification_preferences').upsert({ user_id: userId });
+    return defaultNotificationPreferences;
+  }
+
+  return {
+    reminders: data.reminders,
+    upcoming: data.upcoming,
+    replies: data.replies,
+    listActivity: data.list_activity,
+    productUpdates: data.product_updates,
+  };
+}
+
+export async function saveNotificationPreferences(userId: string, preferences: NotificationPreferences) {
+  const client = requireSupabase();
+  const { error } = await client.from('notification_preferences').upsert(
+    {
+      user_id: userId,
+      reminders: preferences.reminders,
+      upcoming: preferences.upcoming,
+      replies: preferences.replies,
+      list_activity: preferences.listActivity,
+      product_updates: preferences.productUpdates,
+    },
+    { onConflict: 'user_id' }
+  );
+
+  if (error) throw error;
 }
 
 export async function saveOnboardingPreferences({
@@ -154,6 +227,15 @@ export async function saveOnboardingPreferences({
 
 export async function requestAccountDeletion(reason?: string) {
   const client = requireSupabase();
+  const { error: functionError } = await client.functions.invoke('delete-account', {
+    body: { reason: reason ?? null },
+  });
+
+  if (!functionError) {
+    await signOut();
+    return;
+  }
+
   const { error } = await client.rpc('delete_own_account', { deletion_reason: reason ?? null });
 
   throwSupabaseError(error);
@@ -174,86 +256,10 @@ export async function getLibraryItems(userId: string) {
 
 export async function getLibraryShows(userId: string): Promise<LibraryShow[]> {
   const client = requireSupabase();
-  const { data: libraryItems, error } = await client
-    .from('user_library_items')
-    .select('id, status, shows(id, title, poster_url)')
-    .eq('user_id', userId)
-    .eq('media_type', 'show')
-    .order('updated_at', { ascending: false });
+  const { data, error } = await (client as any).rpc('get_library_progress', { target_user_id: userId });
 
   if (error) throw error;
-
-  const showRows = (libraryItems ?? [])
-    .map((item) => item.shows as { id: string; title: string; poster_url: string | null } | null)
-    .filter(Boolean) as Array<{ id: string; title: string; poster_url: string | null }>;
-  const showIds = showRows.map((show) => show.id);
-
-  if (!showIds.length) return [];
-
-  const { data: seasons, error: seasonsError } = await client
-    .from('seasons')
-    .select('id, show_id, season_number, episodes(id, episode_number, title)')
-    .in('show_id', showIds)
-    .order('season_number', { ascending: true });
-
-  if (seasonsError) throw seasonsError;
-
-  const episodeIds = (seasons ?? []).flatMap((season) =>
-    ((season.episodes as Array<{ id: string }> | null) ?? []).map((episode) => episode.id)
-  );
-  const watchedIds = new Set<string>();
-
-  if (episodeIds.length) {
-    const { data: progressRows, error: progressError } = await client
-      .from('episode_watch_progress')
-      .select('episode_id')
-      .eq('user_id', userId)
-      .eq('watched', true)
-      .in('episode_id', episodeIds);
-
-    if (progressError) throw progressError;
-    progressRows?.forEach((row) => watchedIds.add(row.episode_id));
-  }
-
-  return (libraryItems ?? [])
-    .filter((item) => item.shows)
-    .map((item) => {
-      const show = item.shows as { id: string; title: string; poster_url: string | null };
-      const showSeasons = (seasons ?? []).filter((season) => season.show_id === show.id);
-      const showEpisodes = showSeasons.flatMap((season) =>
-        ((season.episodes as Array<{ id: string; episode_number: number; title: string }> | null) ?? []).map((episode) => ({
-          ...episode,
-          seasonNumber: season.season_number,
-        }))
-      );
-      const watchedEpisodes = showEpisodes.filter((episode) => watchedIds.has(episode.id)).length;
-      const totalEpisodes = showEpisodes.length;
-      const nextEpisode = showEpisodes.find((episode) => !watchedIds.has(episode.id));
-      const progress = totalEpisodes ? Math.round((watchedEpisodes / totalEpisodes) * 100) : 0;
-      const status =
-        item.status === 'finished'
-          ? 'Finished'
-          : item.status === 'paused'
-            ? 'Paused'
-            : item.status === 'dropped'
-              ? 'Dropped'
-              : 'Watching';
-
-      return {
-        title: show.title,
-        status: progress === 100 && totalEpisodes > 0 ? 'Finished' : status,
-        progress,
-        watchedEpisodes,
-        totalEpisodes,
-        next: nextEpisode
-          ? `S${String(nextEpisode.seasonNumber).padStart(2, '0')} | E${String(nextEpisode.episode_number).padStart(2, '0')}`
-          : totalEpisodes
-            ? 'Finished'
-            : 'Importing episodes',
-        meta: totalEpisodes ? `${watchedEpisodes} of ${totalEpisodes} watched` : 'Episode data is syncing',
-        image: show.poster_url ?? 'https://images.unsplash.com/photo-1485846234645-a62644f84728?q=80&w=600&auto=format&fit=crop',
-      } satisfies LibraryShow;
-    });
+  return (data ?? []) as LibraryShow[];
 }
 
 function numericIdFromString(value: string) {
@@ -325,6 +331,7 @@ export async function getWatchNextEpisodes(userId: string): Promise<Episode[]> {
 
       return {
         id: numericIdFromString(nextEpisode.id),
+        backendId: nextEpisode.id,
         show: show.title,
         code: `S${String(nextEpisode.seasonNumber).padStart(2, '0')} | E${String(nextEpisode.episode_number).padStart(2, '0')}`,
         title: nextEpisode.title,
@@ -341,6 +348,8 @@ export async function getWatchNextEpisodes(userId: string): Promise<Episode[]> {
 
 export async function getNotifications(userId: string) {
   const client = requireSupabase();
+  await Promise.all([createDueReminderNotifications(userId), createUpcomingEpisodeNotifications(userId)]);
+
   const { data, error } = await client
     .from('notifications')
     .select('*')
@@ -349,6 +358,80 @@ export async function getNotifications(userId: string) {
 
   if (error) throw error;
   return data;
+}
+
+export async function createDueReminderNotifications(userId: string) {
+  const client = requireSupabase();
+  const { data, error } = await client
+    .from('reminders')
+    .select('id, remind_at, episodes(title, episode_number, seasons(season_number, shows(title)))')
+    .eq('user_id', userId)
+    .eq('enabled', true)
+    .lte('remind_at', new Date().toISOString());
+
+  if (error) throw error;
+
+  await Promise.all(
+    (data ?? []).map((reminder) => {
+      const episode = reminder.episodes as
+        | { title: string; episode_number: number; seasons: { season_number: number; shows: { title: string } } }
+        | null;
+      const showTitle = episode?.seasons?.shows?.title ?? 'Your show';
+      const code = episode
+        ? `S${String(episode.seasons.season_number).padStart(2, '0')} | E${String(episode.episode_number).padStart(2, '0')}`
+        : 'Next episode';
+
+      return createNotification({
+        userId,
+        type: 'Reminder',
+        title: `${showTitle} is ready`,
+        body: `${code}${episode?.title ? ` - ${episode.title}` : ''}`,
+        deepLink: `/shows/${encodeURIComponent(showTitle)}`,
+      });
+    })
+  );
+}
+
+export async function createUpcomingEpisodeNotifications(userId: string) {
+  const client = requireSupabase();
+  const now = new Date();
+  const soon = new Date(now);
+  soon.setDate(now.getDate() + 2);
+
+  const { data: libraryItems, error: libraryError } = await client
+    .from('user_library_items')
+    .select('show_id')
+    .eq('user_id', userId)
+    .eq('media_type', 'show');
+
+  if (libraryError) throw libraryError;
+
+  const showIds = (libraryItems ?? []).map((item) => item.show_id).filter(Boolean) as string[];
+  if (!showIds.length) return;
+
+  const { data, error } = await client
+    .from('episodes')
+    .select('title, episode_number, air_date, seasons!inner(season_number, shows!inner(id, title))')
+    .in('seasons.shows.id', showIds)
+    .gte('air_date', now.toISOString().slice(0, 10))
+    .lte('air_date', soon.toISOString().slice(0, 10))
+    .order('air_date', { ascending: true });
+
+  if (error) throw error;
+
+  await Promise.all(
+    (data ?? []).map((episode) => {
+      const season = episode.seasons as { season_number: number; shows: { title: string } };
+      const code = `S${String(season.season_number).padStart(2, '0')} | E${String(episode.episode_number).padStart(2, '0')}`;
+      return createNotification({
+        userId,
+        type: 'Upcoming',
+        title: `${season.shows.title} airs soon`,
+        body: `${code} - ${episode.title}${episode.air_date ? ` on ${episode.air_date}` : ''}`,
+        deepLink: `/shows/${encodeURIComponent(season.shows.title)}`,
+      });
+    })
+  );
 }
 
 export async function getReminders(userId: string) {
@@ -399,13 +482,14 @@ export async function getUpcomingGroups(userId: string): Promise<UpcomingGroup[]
 
   const episodeIds = (allEpisodes ?? []).map((episode) => episode.id);
   const reminderIds = new Set<string>();
+  const reminderTimes = new Map<string, string>();
   const watchedIds = new Set<string>();
 
   if (episodeIds.length) {
     const [{ data: reminders, error: reminderError }, { data: progressRows, error: progressError }] = await Promise.all([
       client
         .from('reminders')
-        .select('episode_id')
+        .select('episode_id, remind_at')
         .eq('user_id', userId)
         .eq('enabled', true)
         .in('episode_id', episodeIds),
@@ -419,7 +503,10 @@ export async function getUpcomingGroups(userId: string): Promise<UpcomingGroup[]
 
     if (reminderError) throw reminderError;
     if (progressError) throw progressError;
-    reminders?.forEach((reminder) => reminderIds.add(reminder.episode_id));
+    reminders?.forEach((reminder) => {
+      reminderIds.add(reminder.episode_id);
+      reminderTimes.set(reminder.episode_id, reminder.remind_at);
+    });
     progressRows?.forEach((row) => watchedIds.add(row.episode_id));
   }
 
@@ -441,6 +528,9 @@ export async function getUpcomingGroups(userId: string): Promise<UpcomingGroup[]
       title: episode.title,
       time: 'Release day',
       platform: 'TVmaze',
+      episodeId: episode.id,
+      airDate: episode.air_date,
+      remindAt: reminderTimes.get(episode.id) ?? null,
       tracked: reminderIds.has(episode.id),
       image: season.shows.poster_url ?? 'https://images.unsplash.com/photo-1485846234645-a62644f84728?q=80&w=600&auto=format&fit=crop',
     });
@@ -471,6 +561,9 @@ export async function getUpcomingGroups(userId: string): Promise<UpcomingGroup[]
       title: nextEpisode.title,
       time: nextEpisode.air_date ? `Aired ${nextEpisode.air_date}` : 'Next to watch',
       platform: 'Library',
+      episodeId: nextEpisode.id,
+      airDate: nextEpisode.air_date,
+      remindAt: reminderTimes.get(nextEpisode.id) ?? null,
       tracked: reminderIds.has(nextEpisode.id),
       image: season.shows.poster_url ?? 'https://images.unsplash.com/photo-1485846234645-a62644f84728?q=80&w=600&auto=format&fit=crop',
     };
@@ -481,27 +574,10 @@ export async function getUpcomingGroups(userId: string): Promise<UpcomingGroup[]
 
 export async function getProfileStats(userId: string) {
   const client = requireSupabase();
-  const [{ count: watchedEpisodes, error: episodeError }, { data: watchedMovies, error: movieError }] = await Promise.all([
-    client.from('episode_watch_progress').select('id', { count: 'exact', head: true }).eq('user_id', userId).eq('watched', true),
-    client.from('movie_watch_status').select('movies(runtime_minutes)').eq('user_id', userId).eq('status', 'finished'),
-  ]);
+  const { data, error } = await (client as any).rpc('get_profile_stats', { target_user_id: userId });
 
-  if (episodeError) throw episodeError;
-  if (movieError) throw movieError;
-
-  const movieMinutes = (watchedMovies ?? []).reduce((total, row) => {
-    const movie = row.movies as { runtime_minutes: number | null } | null;
-    return total + (movie?.runtime_minutes ?? 112);
-  }, 0);
-  const totalMinutes = (watchedEpisodes ?? 0) * 44 + movieMinutes;
-  const days = Math.floor(totalMinutes / 1440);
-  const hours = Math.round((totalMinutes % 1440) / 60);
-
-  return {
-    episodes: watchedEpisodes ?? 0,
-    totalTime: `${days}d ${hours}h`,
-    streak: watchedEpisodes ? `${Math.max(1, Math.min(30, watchedEpisodes))}d` : '0d',
-  };
+  if (error) throw error;
+  return data;
 }
 
 export async function getRecentActivity(userId: string) {
@@ -536,13 +612,22 @@ export async function getRecentActivity(userId: string) {
   });
 }
 
-export async function getCommunityComments(context: { kind: 'episode' | 'movie'; title: string }) {
+export async function getCommunityComments(context: {
+  kind: 'episode' | 'movie';
+  title: string;
+  userId?: string;
+  limit?: number;
+  offset?: number;
+}) {
   const client = requireSupabase();
+  const limit = Math.min(Math.max(context.limit ?? 20, 1), 50);
+  const offset = Math.max(context.offset ?? 0, 0);
   const baseQuery = client
     .from('comments')
-    .select('id, body, spoiler_level, profiles(display_name), comment_likes(count)')
+    .select('id, user_id, body, spoiler_level, status, report_count, created_at, profiles(display_name)')
+    .neq('status', 'hidden')
     .order('created_at', { ascending: false })
-    .limit(20);
+    .range(offset, offset + limit - 1);
 
   const lookup = context.kind === 'movie' ? await findMovieByTitle(context.title) : await findShowByTitle(context.title);
   if (!lookup) return [];
@@ -553,13 +638,36 @@ export async function getCommunityComments(context: { kind: 'episode' | 'movie';
       : await baseQuery.eq('show_id', lookup.id);
 
   if (error) throw error;
+  const commentIds = (data ?? []).map((comment) => comment.id);
+  const likeCounts = new Map<string, number>();
+  const likedByMe = new Set<string>();
+
+  if (commentIds.length) {
+    const { data: likes, error: likesError } = await client
+      .from('comment_likes')
+      .select('comment_id, user_id')
+      .in('comment_id', commentIds);
+
+    if (likesError) throw likesError;
+
+    likes?.forEach((like) => {
+      likeCounts.set(like.comment_id, (likeCounts.get(like.comment_id) ?? 0) + 1);
+      if (context.userId && like.user_id === context.userId) likedByMe.add(like.comment_id);
+    });
+  }
 
   return (data ?? []).map((comment) => ({
     id: comment.id,
     user: (comment.profiles as { display_name: string } | null)?.display_name ?? 'Watcher',
     mood: comment.spoiler_level ?? 'Reacted',
     text: comment.body,
-    likes: Array.isArray(comment.comment_likes) ? comment.comment_likes.length : 0,
+    likes: likeCounts.get(comment.id) ?? 0,
+    likedByMe: likedByMe.has(comment.id),
+    canDelete: context.userId === comment.user_id,
+    canReport: Boolean(context.userId && context.userId !== comment.user_id),
+    status: comment.status,
+    reportCount: comment.report_count,
+    createdAt: comment.created_at,
   }));
 }
 
@@ -580,6 +688,7 @@ export async function createCommunityComment({
 
   const { error } = await client.from('comments').insert({
     user_id: userId,
+    media_type: context.kind === 'movie' ? 'movie' : 'show',
     body,
     spoiler_level: mood,
     show_id: context.kind === 'episode' ? lookup.id : null,
@@ -589,11 +698,120 @@ export async function createCommunityComment({
   if (error) throw error;
 }
 
+export async function toggleCommentLike(userId: string, commentId: string, liked: boolean) {
+  const client = requireSupabase();
+
+  if (liked) {
+    const { error } = await client.from('comment_likes').delete().eq('user_id', userId).eq('comment_id', commentId);
+    if (error) throw error;
+    return false;
+  }
+
+  const { error } = await client
+    .from('comment_likes')
+    .upsert({ user_id: userId, comment_id: commentId }, { onConflict: 'comment_id,user_id' });
+
+  if (error) throw error;
+  return true;
+}
+
+export async function deleteCommunityComment(userId: string, commentId: string) {
+  const client = requireSupabase();
+  const { error } = await client.from('comments').delete().eq('id', commentId).eq('user_id', userId);
+
+  if (error) throw error;
+}
+
+export async function reportCommunityComment(userId: string, commentId: string, reason = 'spoiler') {
+  const client = requireSupabase();
+  const { error } = await client
+    .from('comment_reports')
+    .upsert({ user_id: userId, comment_id: commentId, reason }, { onConflict: 'comment_id,user_id' });
+
+  if (error) throw error;
+
+  const { count, error: countError } = await client
+    .from('comment_reports')
+    .select('id', { count: 'exact', head: true })
+    .eq('comment_id', commentId);
+
+  if (countError) throw countError;
+
+  const nextStatus = (count ?? 0) >= 3 ? 'hidden' : 'reported';
+  const { error: updateError } = await client
+    .from('comments')
+    .update({ status: nextStatus, report_count: count ?? 1 })
+    .eq('id', commentId);
+
+  if (updateError) throw updateError;
+}
+
+export async function startWatchSession({
+  userId,
+  episodeId,
+  movieId,
+}: {
+  userId: string;
+  episodeId?: string;
+  movieId?: string;
+}) {
+  const client = requireSupabase();
+  const { data, error } = await client
+    .from('watch_sessions')
+    .insert({
+      user_id: userId,
+      media_type: episodeId ? 'show' : 'movie',
+      episode_id: episodeId ?? null,
+      movie_id: movieId ?? null,
+    })
+    .select()
+    .single();
+
+  if (error) throw error;
+  return data;
+}
+
+export async function endWatchSession(sessionId: string, durationMinutes?: number) {
+  const client = requireSupabase();
+  const { data, error } = await client
+    .from('watch_sessions')
+    .update({
+      ended_at: new Date().toISOString(),
+      duration_minutes: durationMinutes,
+    })
+    .eq('id', sessionId)
+    .select()
+    .single();
+
+  if (error) throw error;
+  return data;
+}
+
+export async function recordCompletedEpisodeSession(userId: string, episodeId: string, durationMinutes?: number | null) {
+  const startedAt = new Date(Date.now() - (durationMinutes ?? 44) * 60 * 1000).toISOString();
+  const client = requireSupabase();
+  const { data, error } = await client
+    .from('watch_sessions')
+    .insert({
+      user_id: userId,
+      media_type: 'show',
+      episode_id: episodeId,
+      started_at: startedAt,
+      ended_at: new Date().toISOString(),
+      duration_minutes: durationMinutes ?? 44,
+    })
+    .select()
+    .single();
+
+  if (error) throw error;
+  return data;
+}
+
 export async function getShowDetailByTitle(title: string, userId?: string) {
   const client = requireSupabase();
   const { data: show, error: showError } = await client
     .from('shows')
-    .select('id, title, overview, poster_url, backdrop_url, status, average_rating')
+    .select('id, title, overview, poster_url, backdrop_url, status, average_rating, import_status, import_error')
     .eq('title', title)
     .maybeSingle();
 
@@ -630,6 +848,8 @@ export async function getShowDetailByTitle(title: string, userId?: string) {
       title: show.title,
       overview: show.overview ?? 'Track seasons, episodes, and spoiler-safe reactions for this show.',
       status: show.status ?? 'Series',
+      importStatus: show.import_status,
+      importError: show.import_error,
       posterUrl: show.poster_url ?? 'https://images.unsplash.com/photo-1485846234645-a62644f84728?q=80&w=600&auto=format&fit=crop',
       backdropUrl: show.backdrop_url,
       averageRating: show.average_rating ?? 0,
@@ -653,10 +873,7 @@ export async function getShowDetailByTitle(title: string, userId?: string) {
 }
 
 export async function saveProfileTheme(userId: string, theme: string) {
-  const client = requireSupabase();
-  const { error } = await client.from('profiles').update({ theme }).eq('id', userId);
-
-  if (error) throw error;
+  return saveProfileSettings(userId, { theme });
 }
 
 export async function searchCatalog(query: string, mediaType: 'All' | 'Shows' | 'Movies' = 'All') {
@@ -688,12 +905,59 @@ export async function searchCatalog(query: string, mediaType: 'All' | 'Shows' | 
 }
 
 export async function searchExternalCatalog(query: string) {
-  return searchTvmazeShows(query);
+  const term = query.trim();
+  if (!term) return [];
+
+  const client = requireSupabase();
+  const { data, error } = await client.functions.invoke('search-tvmaze', {
+    body: { query: term },
+  });
+
+  if (error) {
+    return searchCachedTvmazeShows(term);
+  }
+
+  return (data?.results ?? []) as Awaited<ReturnType<typeof searchTvmazeShows>>;
+}
+
+async function searchCachedTvmazeShows(query: string) {
+  const term = query.trim();
+  if (!term) return [];
+
+  const client = requireSupabase();
+  const normalizedQuery = term.toLowerCase();
+  const { data: cached, error: cacheError } = await client
+    .from('search_cache')
+    .select('payload')
+    .eq('query', normalizedQuery)
+    .eq('media_type', 'Shows')
+    .eq('source', 'tvmaze')
+    .gt('expires_at', new Date().toISOString())
+    .maybeSingle();
+
+  if (cacheError) throw cacheError;
+  if (cached?.payload) return cached.payload as unknown as Awaited<ReturnType<typeof searchTvmazeShows>>;
+
+  const results = await searchTvmazeShows(term);
+  const { error } = await client.from('search_cache').upsert(
+    {
+      query: normalizedQuery,
+      media_type: 'Shows',
+      source: 'tvmaze',
+      payload: results,
+      result_count: results.length,
+      expires_at: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString(),
+    },
+    { onConflict: 'query,media_type,source' }
+  );
+
+  if (error) throw error;
+  return results;
 }
 
 export async function getDiscoverShows(genres: string[] = [], services: string[] = []): Promise<DiscoverItem[]> {
   const seeds = [...genres, 'drama', 'comedy', 'mystery', 'thriller', 'romance'].filter(Boolean);
-  const batches = await Promise.all(seeds.slice(0, 5).map((seed) => searchTvmazeShows(seed).catch(() => [])));
+  const batches = await Promise.all(seeds.slice(0, 5).map((seed) => searchCachedTvmazeShows(seed).catch(() => [])));
   const seen = new Set<number>();
   const shows = batches
     .flat()
@@ -732,65 +996,28 @@ export async function getDiscoverShows(genres: string[] = [], services: string[]
   });
 }
 
-export async function importExternalShow(show: TvmazeShow) {
+export async function getShowImportStatus(showTitle: string) {
   const client = requireSupabase();
-  const showPayload = {
-    tmdb_id: show.id,
-    title: show.name,
-    overview: show.summary?.replace(/<[^>]+>/g, '') ?? null,
-    poster_url: show.image?.original ?? show.image?.medium ?? null,
-    status: show.status,
-    first_air_date: show.premiered,
-    average_rating: show.rating.average ? Number((show.rating.average / 2).toFixed(2)) : null,
-  };
-  const existingShow = await findShowByTitle(show.name);
-  const { data: showRow, error: showError } = existingShow
-    ? await client.from('shows').update(showPayload).eq('id', existingShow.id).select('id').single()
-    : await client.from('shows').insert(showPayload).select('id').single();
+  const { data, error } = await client
+    .from('shows')
+    .select('id, import_status, import_error, last_imported_at')
+    .eq('title', showTitle)
+    .maybeSingle();
 
-  if (showError) throw showError;
+  if (error) throw error;
+  return data;
+}
 
-  const episodes = await getTvmazeEpisodes(show.id);
-  const seasons = [...new Set(episodes.map((episode) => episode.season))];
+export async function importExternalShow(show: TvmazeShow, userId?: string) {
+  const client = requireSupabase();
+  const { data, error } = await client.functions.invoke('request-catalog-import', {
+    body: { show, requestedBy: userId },
+  });
 
-  for (const seasonNumber of seasons) {
-    const { data: seasonRow, error: seasonError } = await client
-      .from('seasons')
-      .upsert(
-        {
-          show_id: showRow.id,
-          season_number: seasonNumber,
-          title: `Season ${seasonNumber}`,
-        },
-        { onConflict: 'show_id,season_number' }
-      )
-      .select('id')
-      .single();
+  if (error) throw error;
+  if (!data?.show?.id) throw new Error('Catalog import could not be queued.');
 
-    if (seasonError) throw seasonError;
-
-    const episodeRows = episodes
-      .filter((episode) => episode.season === seasonNumber)
-      .map((episode) => ({
-        season_id: seasonRow.id,
-        episode_number: episode.number,
-        title: episode.name,
-        overview: episode.summary?.replace(/<[^>]+>/g, '') ?? null,
-        air_date: episode.airdate,
-        runtime_minutes: episode.runtime,
-        average_rating: episode.rating.average ? Number((episode.rating.average / 2).toFixed(2)) : null,
-      }));
-
-    if (episodeRows.length) {
-      const { error: episodeError } = await client
-        .from('episodes')
-        .upsert(episodeRows, { onConflict: 'season_id,episode_number' });
-
-      if (episodeError) throw episodeError;
-    }
-  }
-
-  return showRow;
+  return data.show as { id: string };
 }
 
 export async function importTmdbItem(item: TmdbSearchItem) {
@@ -930,6 +1157,14 @@ export async function findEpisodeByShowAndCode(showTitle: string, code: string) 
   return data;
 }
 
+export async function getEpisodeRuntime(episodeId: string) {
+  const client = requireSupabase();
+  const { data, error } = await client.from('episodes').select('runtime_minutes').eq('id', episodeId).maybeSingle();
+
+  if (error) throw error;
+  return data?.runtime_minutes ?? 44;
+}
+
 export async function addShowToLibrary(userId: string, showId: string) {
   const client = requireSupabase();
   const { data, error } = await client
@@ -947,6 +1182,7 @@ export async function addShowToLibrary(userId: string, showId: string) {
     .single();
 
   if (error) throw error;
+  await recordCompletedEpisodeSession(userId, episodeId, await getEpisodeRuntime(episodeId)).catch(() => undefined);
   return data;
 }
 
@@ -1070,9 +1306,19 @@ export async function createNotification({
   deepLink?: string;
 }) {
   const client = requireSupabase();
+  const preferences = await getNotificationPreferences(userId).catch(() => defaultNotificationPreferences);
+  const allowed =
+    (type === 'Reminder' && preferences.reminders) ||
+    (type === 'Upcoming' && preferences.upcoming) ||
+    (type === 'Reply' && preferences.replies) ||
+    (type === 'List' && preferences.listActivity) ||
+    (type !== 'Reminder' && type !== 'Upcoming' && type !== 'Reply' && type !== 'List');
+
+  if (!allowed) return null;
+
   const normalizedBody = body ?? '';
   const normalizedDeepLink = deepLink ?? '';
-  const since = new Date(Date.now() - 5 * 60 * 1000).toISOString();
+  const since = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString();
   const { data: duplicate, error: duplicateError } = await client
     .from('notifications')
     .select('id')
@@ -1127,18 +1373,23 @@ export async function toggleReminderForEpisode({
   userId,
   showTitle,
   code,
+  episodeId,
+  airDate,
   enabled,
 }: {
   userId: string;
   showTitle: string;
   code: string;
+  episodeId?: string;
+  airDate?: string | null;
   enabled: boolean;
 }) {
   const client = requireSupabase();
-  const episode = await findEpisodeByShowAndCode(showTitle, code);
-  if (!episode) return null;
+  const episode = episodeId ? { id: episodeId } : await findEpisodeByShowAndCode(showTitle, code);
+  if (!episode.id) return null;
 
-  const remindAt = new Date(Date.now() + 60 * 60 * 1000).toISOString();
+  const airDateReminder = airDate ? new Date(`${airDate}T09:00:00`).toISOString() : null;
+  const remindAt = airDateReminder ?? new Date(Date.now() + 60 * 60 * 1000).toISOString();
   const { data, error } = await client
     .from('reminders')
     .upsert(
@@ -1190,7 +1441,7 @@ export async function getHydratedLists(userId: string): Promise<CustomList[]> {
   const client = requireSupabase();
   const { data, error } = await client
     .from('lists')
-    .select('id, title, privacy, list_items(id, media_type, shows(title, poster_url, status), movies(title, poster_url, runtime_minutes))')
+    .select('id, title, description, privacy, list_items(id, media_type, shows(title, poster_url, status), movies(title, poster_url, runtime_minutes))')
     .eq('user_id', userId)
     .order('updated_at', { ascending: false });
 
@@ -1217,6 +1468,7 @@ export async function getHydratedLists(userId: string): Promise<CustomList[]> {
 
     return {
       title: list.title,
+      description: list.description ?? undefined,
       count: `${items.length} titles`,
       privacy: list.privacy === 'public' ? 'Public' : 'Private',
       images: items.slice(0, 3).map((item) => item.image),
@@ -1237,6 +1489,55 @@ export async function toggleListPrivacy(userId: string, title: string, privacy: 
 
   if (error) throw error;
   return data;
+}
+
+export async function getAdminSummary(): Promise<AdminSummary> {
+  const client = requireSupabase();
+  const { data, error } = await (client as any).rpc('get_admin_summary');
+
+  if (error) throw error;
+  return data as AdminSummary;
+}
+
+export async function retryCatalogImport(jobId: string) {
+  const client = requireSupabase();
+  const { error } = await client.functions.invoke('admin-actions', {
+    body: { action: 'retry_import', jobId },
+  });
+
+  if (error) throw error;
+}
+
+export async function hideReportedComment(commentId: string) {
+  const client = requireSupabase();
+  const { error } = await client.functions.invoke('admin-actions', {
+    body: { action: 'hide_comment', commentId },
+  });
+
+  if (error) throw error;
+}
+
+export async function clearSearchCache(cacheId?: string) {
+  const client = requireSupabase();
+  const { error } = await client.functions.invoke('admin-actions', {
+    body: { action: 'clear_cache', cacheId },
+  });
+
+  if (error) throw error;
+}
+
+export async function createSupportIntent(userId?: string) {
+  const client = requireSupabase();
+  const { data, error } = await client.functions.invoke('create-support-intent', {
+    body: {
+      campaignSlug: 'movie-catalog-budget',
+      source: 'buymeacoffee',
+      metadata: { surface: 'movies_locked_page', userId },
+    },
+  });
+
+  if (error) throw error;
+  return data as { ok: boolean; intentId: string; redirectUrl: string };
 }
 
 export async function addMovieTitleToList(userId: string, listTitle: string, movieTitle: string) {

@@ -3,7 +3,7 @@ import type { ReactNode } from 'react';
 import { ImageBackground, Pressable, Text, View } from 'react-native';
 import type { StyleProp, ViewStyle } from 'react-native';
 
-import { accent, bg, ink } from './theme';
+import { accent, bg, ink, muted } from './theme';
 import { useResponsive } from './hooks/useResponsive';
 import { styles } from './styles';
 import type { Episode } from './types';
@@ -167,9 +167,21 @@ export function EmptyState({
   );
 }
 
-export function SettingRow({ title, value, active = false }: { title: string; value: string; active?: boolean }) {
+export function SettingRow({
+  title,
+  value,
+  active = false,
+  onPress,
+}: {
+  title: string;
+  value: string;
+  active?: boolean;
+  onPress?: () => void;
+}) {
+  const Container = onPress ? Pressable : View;
+
   return (
-    <View style={styles.settingRow}>
+    <Container style={styles.settingRow} onPress={onPress}>
       <View>
         <Text style={styles.settingTitle}>{title}</Text>
         <Text style={styles.settingValue}>{value}</Text>
@@ -177,7 +189,7 @@ export function SettingRow({ title, value, active = false }: { title: string; va
       <View style={[styles.settingToggle, active && styles.settingToggleActive]}>
         <View style={[styles.settingToggleKnob, active && styles.settingToggleKnobActive]} />
       </View>
-    </View>
+    </Container>
   );
 }
 
@@ -205,7 +217,7 @@ export function NavItem({
 
   return (
     <Pressable style={[styles.navItem, isDesktop && styles.navItemDesktop, active && isDesktop && styles.navItemDesktopActive]} onPress={onPress}>
-      <Icon color={active ? accent : '#71808a'} size={24} strokeWidth={active ? 2.8 : 2} />
+      <Icon color={active ? accent : muted} size={24} strokeWidth={active ? 2.8 : 2} />
       <Text style={[styles.navLabel, isDesktop && styles.navLabelDesktop, active && styles.navLabelActive]}>{label}</Text>
     </Pressable>
   );

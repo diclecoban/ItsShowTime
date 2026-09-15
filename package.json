@@ -16,6 +16,7 @@
     "react-router-dom": "^7.18.3"
   },
   "devDependencies": {
+    "supabase": "^2.56.4",
     "@types/react": "~19.2.2",
     "@vitejs/plugin-react": "^6.1.1",
     "typescript": "~6.0.3",
@@ -26,7 +27,14 @@
     "android": "expo start --android",
     "ios": "expo start --ios",
     "expo:web": "expo start --web",
-    "web": "vite --host 0.0.0.0 --port 8081"
+    "web": "vite --host 0.0.0.0 --port 8081",
+    "supabase:start": "supabase start",
+    "supabase:stop": "supabase stop",
+    "supabase:db:push": "supabase db push",
+    "supabase:functions:serve": "supabase functions serve",
+    "supabase:types": "supabase gen types typescript --local > src/lib/database.types.ts",
+    "supabase:types:linked": "supabase gen types typescript --linked > src/lib/database.types.ts",
+    "test:backend": "node scripts/backend-smoke-tests.mjs"
   },
   "private": true
 }

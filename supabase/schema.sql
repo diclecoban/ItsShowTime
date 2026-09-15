@@ -7,6 +7,7 @@ create type media_type as enum ('show', 'movie');
 create type library_status as enum ('watching', 'watchlist', 'paused', 'finished', 'dropped');
 create type list_privacy as enum ('private', 'public', 'friends');
 create type spoiler_mode as enum ('strict', 'moderate', 'off');
+create type catalog_import_status as enum ('pending', 'processing', 'ready', 'failed');
 
 create table public.profiles (
   id uuid primary key references auth.users(id) on delete cascade,
@@ -17,6 +18,7 @@ create table public.profiles (
   language text not null default 'en',
   theme text not null default 'Pantone 1',
   spoiler_mode spoiler_mode not null default 'strict',
+  is_admin boolean not null default false,
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now()
 );
@@ -43,6 +45,9 @@ create table public.shows (
   status text,
   first_air_date date,
   average_rating numeric(3, 2) default 0,
+  import_status catalog_import_status not null default 'pending',
+  import_error text,
+  last_imported_at timestamptz,
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now()
 );
@@ -214,13 +219,25 @@ create table public.comments (
   episode_id uuid references public.episodes(id) on delete cascade,
   body text not null,
   spoiler_level text not null default 'episode',
+  status text not null default 'visible',
+  report_count integer not null default 0,
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now(),
   constraint comments_target check (
     (media_type = 'show' and show_id is not null and movie_id is null)
     or
     (media_type = 'movie' and movie_id is not null and show_id is null)
-  )
+  ),
+  constraint comments_status_known check (status in ('visible', 'reported', 'hidden'))
+);
+
+create table public.comment_reports (
+  id uuid primary key default gen_random_uuid(),
+  comment_id uuid not null references public.comments(id) on delete cascade,
+  user_id uuid not null references public.profiles(id) on delete cascade,
+  reason text not null default 'spoiler',
+  created_at timestamptz not null default now(),
+  unique (comment_id, user_id)
 );
 
 create table public.comment_likes (
@@ -244,6 +261,17 @@ create table public.user_genres (
   primary key (user_id, genre_id)
 );
 
+create table public.notification_preferences (
+  user_id uuid primary key references public.profiles(id) on delete cascade,
+  reminders boolean not null default true,
+  upcoming boolean not null default true,
+  replies boolean not null default true,
+  list_activity boolean not null default true,
+  product_updates boolean not null default true,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now()
+);
+
 create table public.notifications (
   id uuid primary key default gen_random_uuid(),
   user_id uuid not null references public.profiles(id) on delete cascade,
@@ -253,6 +281,57 @@ create table public.notifications (
   deep_link text,
   read_at timestamptz,
   created_at timestamptz not null default now()
+);
+
+create table public.search_cache (
+  id uuid primary key default gen_random_uuid(),
+  query text not null,
+  media_type text not null default 'Shows',
+  source text not null default 'tvmaze',
+  payload jsonb not null,
+  result_count integer not null default 0,
+  expires_at timestamptz not null default (now() + interval '7 days'),
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now(),
+  unique (query, media_type, source)
+);
+
+create table public.support_campaigns (
+  id uuid primary key default gen_random_uuid(),
+  slug text not null unique,
+  title text not null,
+  description text,
+  target_amount_cents integer not null default 0,
+  currency text not null default 'USD',
+  current_amount_cents integer not null default 0,
+  status text not null default 'active' check (status in ('active', 'paused', 'funded', 'archived')),
+  external_url text,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now()
+);
+
+create table public.support_intents (
+  id uuid primary key default gen_random_uuid(),
+  user_id uuid references public.profiles(id) on delete set null,
+  campaign_id uuid references public.support_campaigns(id) on delete set null,
+  source text not null default 'buymeacoffee',
+  amount_cents integer,
+  currency text not null default 'USD',
+  status text not null default 'opened' check (status in ('opened', 'completed', 'cancelled')),
+  metadata jsonb not null default '{}'::jsonb,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now()
+);
+
+create table public.edge_rate_limits (
+  id uuid primary key default gen_random_uuid(),
+  user_id uuid references public.profiles(id) on delete cascade,
+  function_name text not null,
+  window_start timestamptz not null,
+  request_count integer not null default 1,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now(),
+  unique (user_id, function_name, window_start)
 );
 
 create table public.account_deletion_requests (
@@ -274,6 +353,22 @@ create table public.reminders (
   unique (user_id, episode_id)
 );
 
+create table public.catalog_import_jobs (
+  id uuid primary key default gen_random_uuid(),
+  show_id uuid not null references public.shows(id) on delete cascade,
+  source text not null default 'tvmaze',
+  external_id integer not null,
+  status catalog_import_status not null default 'pending',
+  error text,
+  attempts integer not null default 0,
+  created_by uuid references public.profiles(id) on delete set null,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now(),
+  started_at timestamptz,
+  finished_at timestamptz,
+  unique (source, external_id)
+);
+
 create table public.activity_feed (
   id uuid primary key default gen_random_uuid(),
   user_id uuid not null references public.profiles(id) on delete cascade,
@@ -293,8 +388,19 @@ create index idx_lists_user on public.lists(user_id);
 create index idx_list_items_list on public.list_items(list_id);
 create unique index uniq_list_item on public.list_items(list_id, media_type, target_id);
 create index idx_comments_episode on public.comments(episode_id, created_at desc);
+create index idx_comments_status_created on public.comments(status, created_at desc);
+create index idx_comment_reports_comment on public.comment_reports(comment_id);
 create index idx_notifications_user on public.notifications(user_id, created_at desc);
+create index idx_search_cache_lookup on public.search_cache(query, media_type, source, expires_at);
+create index idx_support_campaigns_status on public.support_campaigns(status);
+create index idx_support_intents_user_created on public.support_intents(user_id, created_at desc);
+create index idx_support_intents_campaign on public.support_intents(campaign_id, status);
+create index idx_edge_rate_limits_user_function on public.edge_rate_limits(user_id, function_name, window_start desc);
 create index idx_reminders_user_enabled on public.reminders(user_id, enabled);
+create index idx_catalog_import_jobs_status on public.catalog_import_jobs(status, created_at);
+create index idx_shows_import_status on public.shows(import_status);
+create index idx_watch_sessions_user_started on public.watch_sessions(user_id, started_at desc);
+create index idx_watch_sessions_open_episode on public.watch_sessions(user_id, episode_id) where ended_at is null and episode_id is not null;
 
 create or replace function public.set_updated_at()
 returns trigger
@@ -330,6 +436,24 @@ for each row execute function public.set_updated_at();
 create trigger set_comments_updated_at before update on public.comments
 for each row execute function public.set_updated_at();
 
+create trigger set_notification_preferences_updated_at before update on public.notification_preferences
+for each row execute function public.set_updated_at();
+
+create trigger set_search_cache_updated_at before update on public.search_cache
+for each row execute function public.set_updated_at();
+
+create trigger set_support_campaigns_updated_at before update on public.support_campaigns
+for each row execute function public.set_updated_at();
+
+create trigger set_support_intents_updated_at before update on public.support_intents
+for each row execute function public.set_updated_at();
+
+create trigger set_edge_rate_limits_updated_at before update on public.edge_rate_limits
+for each row execute function public.set_updated_at();
+
+create trigger set_catalog_import_jobs_updated_at before update on public.catalog_import_jobs
+for each row execute function public.set_updated_at();
+
 create or replace function public.handle_new_user()
 returns trigger
 language plpgsql
@@ -348,6 +472,15 @@ begin
   );
   return new;
 end;
+$$;
+
+create or replace function public.is_current_user_admin()
+returns boolean
+language sql
+security definer
+set search_path = public
+as $$
+  select coalesce((select is_admin from public.profiles where id = auth.uid()), false);
 $$;
 
 create trigger on_auth_user_created
@@ -390,12 +523,19 @@ alter table public.lists enable row level security;
 alter table public.list_items enable row level security;
 alter table public.follows enable row level security;
 alter table public.comments enable row level security;
+alter table public.comment_reports enable row level security;
 alter table public.comment_likes enable row level security;
 alter table public.user_streaming_services enable row level security;
 alter table public.user_genres enable row level security;
+alter table public.notification_preferences enable row level security;
 alter table public.notifications enable row level security;
+alter table public.search_cache enable row level security;
+alter table public.support_campaigns enable row level security;
+alter table public.support_intents enable row level security;
+alter table public.edge_rate_limits enable row level security;
 alter table public.account_deletion_requests enable row level security;
 alter table public.reminders enable row level security;
+alter table public.catalog_import_jobs enable row level security;
 alter table public.activity_feed enable row level security;
 
 alter table public.platforms enable row level security;
@@ -426,10 +566,21 @@ create policy "Users manage own movie status" on public.movie_watch_status for a
 create policy "Users manage own watch sessions" on public.watch_sessions for all using (auth.uid() = user_id) with check (auth.uid() = user_id);
 create policy "Users manage own platform preferences" on public.user_streaming_services for all using (auth.uid() = user_id) with check (auth.uid() = user_id);
 create policy "Users manage own genre preferences" on public.user_genres for all using (auth.uid() = user_id) with check (auth.uid() = user_id);
+create policy "Users manage own notification preferences" on public.notification_preferences for all to authenticated using (auth.uid() = user_id) with check (auth.uid() = user_id);
 create policy "Users manage own notifications" on public.notifications for all using (auth.uid() = user_id) with check (auth.uid() = user_id);
+create policy "Authenticated users read search cache" on public.search_cache for select to authenticated using (expires_at > now());
+create policy "Admins manage search cache" on public.search_cache for all to authenticated using (public.is_current_user_admin()) with check (public.is_current_user_admin());
+create policy "Anyone can read active support campaigns" on public.support_campaigns for select to anon, authenticated using (status = 'active' or public.is_current_user_admin());
+create policy "Admins update support campaigns" on public.support_campaigns for update to authenticated using (public.is_current_user_admin()) with check (public.is_current_user_admin());
+create policy "Users create own support intents" on public.support_intents for insert to authenticated with check (auth.uid() = user_id);
+create policy "Users read own support intents" on public.support_intents for select to authenticated using (auth.uid() = user_id or public.is_current_user_admin());
+create policy "Admins read edge rate limits" on public.edge_rate_limits for select to authenticated using (public.is_current_user_admin());
 create policy "Users request own account deletion" on public.account_deletion_requests for insert with check (auth.uid() = user_id);
 create policy "Users read own account deletion request" on public.account_deletion_requests for select using (auth.uid() = user_id);
+create policy "Admins read account deletion requests" on public.account_deletion_requests for select to authenticated using (public.is_current_user_admin());
 create policy "Users manage own reminders" on public.reminders for all using (auth.uid() = user_id) with check (auth.uid() = user_id);
+create policy "Users can read own catalog import jobs" on public.catalog_import_jobs for select to authenticated using (created_by = auth.uid() or public.is_current_user_admin());
+create policy "Users can create catalog import jobs" on public.catalog_import_jobs for insert to authenticated with check (auth.uid() = created_by);
 
 create policy "Users manage own lists" on public.lists for all using (auth.uid() = user_id) with check (auth.uid() = user_id);
 create policy "Users read public lists" on public.lists for select using (privacy = 'public' or auth.uid() = user_id);
@@ -461,6 +612,8 @@ create policy "Users can create comments" on public.comments for insert with che
 create policy "Users update own comments" on public.comments for update using (auth.uid() = user_id);
 create policy "Users delete own comments" on public.comments for delete using (auth.uid() = user_id);
 
+create policy "Users can report comments" on public.comment_reports for insert to authenticated with check (auth.uid() = user_id);
+create policy "Users can read own comment reports" on public.comment_reports for select to authenticated using (auth.uid() = user_id);
 create policy "Users manage own comment likes" on public.comment_likes for all using (auth.uid() = user_id) with check (auth.uid() = user_id);
 create policy "Users read own activity feed" on public.activity_feed for select using (auth.uid() = user_id);
 

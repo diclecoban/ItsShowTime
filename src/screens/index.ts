@@ -1,3 +1,4 @@
+export { AdminPage } from './AdminPage';
 export { AuthPage } from './AuthPage';
 export { OnboardingPage } from './OnboardingPage';
 export { ShowDetail } from './ShowDetail';
