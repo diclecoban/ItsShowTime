@@ -1,4 +1,5 @@
 import { supabase } from './supabase';
+import { readThroughCache } from './offlineCache';
 import {
   getTmdbMovieDetail,
   getTmdbSeasonDetail,
@@ -11,6 +12,7 @@ import {
 import { searchTvmazeShows, type TvmazeShow } from './tvmaze';
 import type {
   AdminSummary,
+  CrisisControl,
   CustomList,
   DiscoverItem,
   Episode,
@@ -20,6 +22,19 @@ import type {
   UpcomingGroup,
 } from '../types';
 
+type CommentRow = {
+  id: string;
+  user_id: string;
+  body: string;
+  spoiler_level: string | null;
+  status: 'visible' | 'reported' | 'hidden';
+  report_count: number;
+  is_spoiler?: boolean;
+  parent_comment_id?: string | null;
+  created_at: string;
+  profiles: { display_name: string } | null;
+};
+
 const defaultNotificationPreferences: NotificationPreferences = {
   reminders: true,
   upcoming: true,
@@ -27,6 +42,32 @@ const defaultNotificationPreferences: NotificationPreferences = {
   listActivity: true,
   productUpdates: true,
 };
+
+export const defaultCrisisControl: CrisisControl = {
+  mode: 'normal',
+  message: '',
+  features: {
+    externalSearch: true,
+    catalogImport: true,
+    communityWrites: true,
+    notifications: true,
+    realtime: true,
+    newSignups: true,
+    queueWorkers: true,
+    support: true,
+  },
+};
+
+function normalizeCrisisControl(config?: Partial<CrisisControl> | null): CrisisControl {
+  return {
+    ...defaultCrisisControl,
+    ...(config ?? {}),
+    features: {
+      ...defaultCrisisControl.features,
+      ...(config?.features ?? {}),
+    },
+  };
+}
 
 export function requireSupabase() {
   if (!supabase) {
@@ -171,6 +212,30 @@ export async function saveNotificationPreferences(userId: string, preferences: N
   if (error) throw error;
 }
 
+export async function registerDevicePushToken({
+  userId,
+  expoPushToken,
+  platform,
+}: {
+  userId: string;
+  expoPushToken: string;
+  platform: string;
+}) {
+  const client = requireSupabase();
+  const { error } = await client.from('device_push_tokens').upsert(
+    {
+      user_id: userId,
+      expo_push_token: expoPushToken,
+      platform,
+      enabled: true,
+      last_seen_at: new Date().toISOString(),
+    },
+    { onConflict: 'user_id,expo_push_token' }
+  );
+
+  if (error) throw error;
+}
+
 export async function saveOnboardingPreferences({
   userId,
   genres,
@@ -256,108 +321,44 @@ export async function getLibraryItems(userId: string) {
 
 export async function getLibraryShows(userId: string): Promise<LibraryShow[]> {
   const client = requireSupabase();
-  const { data, error } = await (client as any).rpc('get_library_progress', { target_user_id: userId });
+  return readThroughCache(`library-progress:${userId}`, async () => {
+    const { data, error } = await (client as any).rpc('get_library_progress', { target_user_id: userId });
 
-  if (error) throw error;
-  return (data ?? []) as LibraryShow[];
-}
-
-function numericIdFromString(value: string) {
-  return value.split('').reduce((total, char) => total + char.charCodeAt(0), 0);
+    if (error) throw error;
+    return (data ?? []) as LibraryShow[];
+  });
 }
 
 export async function getWatchNextEpisodes(userId: string): Promise<Episode[]> {
   const client = requireSupabase();
-  const { data: libraryItems, error } = await client
-    .from('user_library_items')
-    .select('status, shows(id, title, poster_url)')
-    .eq('user_id', userId)
-    .eq('media_type', 'show')
-    .order('updated_at', { ascending: false });
+  return readThroughCache(`watch-next:${userId}`, async () => {
+    const { data, error } = await (client as any).rpc('get_watch_next_episodes', { target_user_id: userId });
 
-  if (error) throw error;
-
-  const showRows = (libraryItems ?? [])
-    .map((item) => item.shows as { id: string; title: string; poster_url: string | null } | null)
-    .filter(Boolean) as Array<{ id: string; title: string; poster_url: string | null }>;
-  const showIds = showRows.map((show) => show.id);
-
-  if (!showIds.length) return [];
-
-  const { data: seasons, error: seasonsError } = await client
-    .from('seasons')
-    .select('id, show_id, season_number, episodes(id, episode_number, title, average_rating)')
-    .in('show_id', showIds)
-    .order('season_number', { ascending: true });
-
-  if (seasonsError) throw seasonsError;
-
-  const episodeIds = (seasons ?? []).flatMap((season) =>
-    ((season.episodes as Array<{ id: string }> | null) ?? []).map((episode) => episode.id)
-  );
-  const watchedIds = new Set<string>();
-
-  if (episodeIds.length) {
-    const { data: progressRows, error: progressError } = await client
-      .from('episode_watch_progress')
-      .select('episode_id')
-      .eq('user_id', userId)
-      .eq('watched', true)
-      .in('episode_id', episodeIds);
-
-    if (progressError) throw progressError;
-    progressRows?.forEach((row) => watchedIds.add(row.episode_id));
-  }
-
-  return (libraryItems ?? [])
-    .filter((item) => item.shows)
-    .flatMap((item) => {
-      const show = item.shows as { id: string; title: string; poster_url: string | null };
-      const showEpisodes = (seasons ?? [])
-        .filter((season) => season.show_id === show.id)
-        .flatMap((season) =>
-          ((season.episodes as Array<{ id: string; episode_number: number; title: string; average_rating: number | null }> | null) ?? [])
-            .map((episode) => ({
-              ...episode,
-              seasonNumber: season.season_number,
-            }))
-        )
-        .sort((a, b) => (a.seasonNumber - b.seasonNumber) || (a.episode_number - b.episode_number));
-      const watchedEpisodes = showEpisodes.filter((episode) => watchedIds.has(episode.id)).length;
-      const totalEpisodes = showEpisodes.length;
-      const nextEpisode = showEpisodes.find((episode) => !watchedIds.has(episode.id));
-
-      if (!nextEpisode) return [];
-
-      return {
-        id: numericIdFromString(nextEpisode.id),
-        backendId: nextEpisode.id,
-        show: show.title,
-        code: `S${String(nextEpisode.seasonNumber).padStart(2, '0')} | E${String(nextEpisode.episode_number).padStart(2, '0')}`,
-        title: nextEpisode.title,
-        tag: watchedEpisodes ? 'KEEP WATCHING' : 'START WATCHING',
-        progress: totalEpisodes ? Math.round((watchedEpisodes / totalEpisodes) * 100) : 0,
-        watchedEpisodes,
-        totalEpisodes,
-        averageRating: nextEpisode.average_rating ?? 0,
-        image: show.poster_url ?? 'https://images.unsplash.com/photo-1485846234645-a62644f84728?q=80&w=600&auto=format&fit=crop',
-        watched: false,
-      } satisfies Episode;
-    });
+    if (error) throw error;
+    return (data ?? []) as Episode[];
+  });
 }
 
-export async function getNotifications(userId: string) {
+export async function getNotifications(userId: string, options: { limit?: number; offset?: number; generate?: boolean } = {}) {
   const client = requireSupabase();
-  await Promise.all([createDueReminderNotifications(userId), createUpcomingEpisodeNotifications(userId)]);
+  const crisisControl = await getAppConfig().catch(() => defaultCrisisControl);
+  if (options.generate !== false && crisisControl.features.notifications && crisisControl.mode !== 'maintenance') {
+    await Promise.all([createDueReminderNotifications(userId), createUpcomingEpisodeNotifications(userId)]);
+  }
 
-  const { data, error } = await client
-    .from('notifications')
-    .select('*')
-    .eq('user_id', userId)
-    .order('created_at', { ascending: false });
+  const limit = options.limit ?? 20;
+  const offset = options.offset ?? 0;
+  return readThroughCache(`notifications:${userId}:${limit}:${offset}`, async () => {
+    const { data, error } = await client
+      .from('notifications')
+      .select('*')
+      .eq('user_id', userId)
+      .order('created_at', { ascending: false })
+      .range(offset, offset + limit - 1);
 
-  if (error) throw error;
-  return data;
+    if (error) throw error;
+    return data ?? [];
+  });
 }
 
 export async function createDueReminderNotifications(userId: string) {
@@ -624,8 +625,9 @@ export async function getCommunityComments(context: {
   const offset = Math.max(context.offset ?? 0, 0);
   const baseQuery = client
     .from('comments')
-    .select('id, user_id, body, spoiler_level, status, report_count, created_at, profiles(display_name)')
+    .select('id, user_id, body, spoiler_level, status, report_count, is_spoiler, parent_comment_id, created_at, profiles(display_name)')
     .neq('status', 'hidden')
+    .is('parent_comment_id', null)
     .order('created_at', { ascending: false })
     .range(offset, offset + limit - 1);
 
@@ -640,6 +642,66 @@ export async function getCommunityComments(context: {
   if (error) throw error;
   const commentIds = (data ?? []).map((comment) => comment.id);
   const likeCounts = new Map<string, number>();
+  const replyCounts = new Map<string, number>();
+  const likedByMe = new Set<string>();
+
+  if (commentIds.length) {
+    const [{ data: likes, error: likesError }, { data: replies, error: repliesError }] = await Promise.all([
+      client
+      .from('comment_likes')
+      .select('comment_id, user_id')
+      .in('comment_id', commentIds),
+      client
+        .from('comments')
+        .select('parent_comment_id')
+        .in('parent_comment_id', commentIds)
+        .neq('status', 'hidden'),
+    ]);
+
+    if (likesError) throw likesError;
+    if (repliesError) throw repliesError;
+
+    likes?.forEach((like) => {
+      likeCounts.set(like.comment_id, (likeCounts.get(like.comment_id) ?? 0) + 1);
+      if (context.userId && like.user_id === context.userId) likedByMe.add(like.comment_id);
+    });
+    replies?.forEach((reply) => {
+      if (!reply.parent_comment_id) return;
+      replyCounts.set(reply.parent_comment_id, (replyCounts.get(reply.parent_comment_id) ?? 0) + 1);
+    });
+  }
+
+  return (data ?? []).map((comment) => ({
+    id: comment.id,
+    userId: comment.user_id,
+    user: (comment.profiles as { display_name: string } | null)?.display_name ?? 'Watcher',
+    mood: comment.spoiler_level ?? 'Reacted',
+    text: comment.body,
+    likes: likeCounts.get(comment.id) ?? 0,
+    replyCount: replyCounts.get(comment.id) ?? 0,
+    isSpoiler: comment.is_spoiler,
+    likedByMe: likedByMe.has(comment.id),
+    canDelete: context.userId === comment.user_id,
+    canReport: Boolean(context.userId && context.userId !== comment.user_id),
+    status: comment.status,
+    reportCount: comment.report_count,
+    createdAt: comment.created_at,
+  }));
+}
+
+export async function getCommentReplies(parentCommentId: string, userId?: string): Promise<CommunityComment[]> {
+  const client = requireSupabase();
+  const { data, error } = await client
+    .from('comments')
+    .select('id, user_id, body, spoiler_level, status, report_count, is_spoiler, parent_comment_id, created_at, profiles(display_name)')
+    .eq('parent_comment_id', parentCommentId)
+    .neq('status', 'hidden')
+    .order('created_at', { ascending: true });
+
+  if (error) throw error;
+
+  const commentIds = (data ?? []).map((comment) => comment.id);
+  const likeCounts = new Map<string, number>();
   const likedByMe = new Set<string>();
 
   if (commentIds.length) {
@@ -649,22 +711,25 @@ export async function getCommunityComments(context: {
       .in('comment_id', commentIds);
 
     if (likesError) throw likesError;
-
     likes?.forEach((like) => {
       likeCounts.set(like.comment_id, (likeCounts.get(like.comment_id) ?? 0) + 1);
-      if (context.userId && like.user_id === context.userId) likedByMe.add(like.comment_id);
+      if (userId && like.user_id === userId) likedByMe.add(like.comment_id);
     });
   }
 
-  return (data ?? []).map((comment) => ({
+  return ((data ?? []) as CommentRow[]).map((comment) => ({
     id: comment.id,
-    user: (comment.profiles as { display_name: string } | null)?.display_name ?? 'Watcher',
+    userId: comment.user_id,
+    user: comment.profiles?.display_name ?? 'Watcher',
     mood: comment.spoiler_level ?? 'Reacted',
     text: comment.body,
     likes: likeCounts.get(comment.id) ?? 0,
+    replyCount: 0,
+    isSpoiler: comment.is_spoiler,
+    parentCommentId: comment.parent_comment_id,
     likedByMe: likedByMe.has(comment.id),
-    canDelete: context.userId === comment.user_id,
-    canReport: Boolean(context.userId && context.userId !== comment.user_id),
+    canDelete: userId === comment.user_id,
+    canReport: Boolean(userId && userId !== comment.user_id),
     status: comment.status,
     reportCount: comment.report_count,
     createdAt: comment.created_at,
@@ -685,6 +750,7 @@ export async function createCommunityComment({
   const client = requireSupabase();
   const lookup = context.kind === 'movie' ? await findMovieByTitle(context.title) : await findShowByTitle(context.title);
   if (!lookup) throw new Error('Could not find this title in the catalog.');
+  const isSpoiler = /\b(spoiler|ending|finale|twist|death|dies)\b/i.test(body) || mood.toLowerCase().includes('spoiler');
 
   const { error } = await client.from('comments').insert({
     user_id: userId,
@@ -693,6 +759,35 @@ export async function createCommunityComment({
     spoiler_level: mood,
     show_id: context.kind === 'episode' ? lookup.id : null,
     movie_id: context.kind === 'movie' ? lookup.id : null,
+    is_spoiler: isSpoiler,
+  });
+
+  if (error) throw error;
+}
+
+export async function createCommunityReply({
+  userId,
+  parentComment,
+  body,
+  mood,
+}: {
+  userId: string;
+  parentComment: CommunityComment;
+  body: string;
+  mood: string;
+}) {
+  const client = requireSupabase();
+  const isSpoiler = /\b(spoiler|ending|finale|twist|death|dies)\b/i.test(body) || mood.toLowerCase().includes('spoiler');
+
+  const { error } = await client.from('comments').insert({
+    user_id: userId,
+    media_type: 'show',
+    body,
+    spoiler_level: mood,
+    parent_comment_id: parentComment.id,
+    is_spoiler: isSpoiler,
+    show_id: null,
+    movie_id: null,
   });
 
   if (error) throw error;
@@ -955,8 +1050,23 @@ async function searchCachedTvmazeShows(query: string) {
   return results;
 }
 
-export async function getDiscoverShows(genres: string[] = [], services: string[] = []): Promise<DiscoverItem[]> {
-  const seeds = [...genres, 'drama', 'comedy', 'mystery', 'thriller', 'romance'].filter(Boolean);
+export async function getRecommendationSignals(userId: string) {
+  const client = requireSupabase();
+  const { data, error } = await (client as any).rpc('refresh_user_recommendation_signals', { target_user_id: userId });
+
+  if (error) throw error;
+  return (data ?? { topMoods: [], completedShowCount: 0, watchedEpisodeCount: 0 }) as {
+    topMoods: string[];
+    completedShowCount: number;
+    watchedEpisodeCount: number;
+  };
+}
+
+export async function getDiscoverShows(genres: string[] = [], services: string[] = [], userId?: string): Promise<DiscoverItem[]> {
+  const signals = userId ? await getRecommendationSignals(userId).catch(() => null) : null;
+  const normalizedGenres = genres.map((genre) => genre.toLowerCase());
+  const moodSeeds = (signals?.topMoods ?? []).map((mood) => mood.toLowerCase());
+  const seeds = [...normalizedGenres, ...moodSeeds, 'drama', 'comedy', 'mystery', 'thriller', 'romance'].filter(Boolean);
   const batches = await Promise.all(seeds.slice(0, 5).map((seed) => searchCachedTvmazeShows(seed).catch(() => [])));
   const seen = new Set<number>();
   const shows = batches
@@ -966,10 +1076,23 @@ export async function getDiscoverShows(genres: string[] = [], services: string[]
       seen.add(show.id);
       return Boolean(show.image?.original ?? show.image?.medium);
     })
-    .slice(0, 12);
+    .map((show) => {
+      const summary = show.summary?.replace(/<[^>]+>/g, '').toLowerCase() ?? '';
+      const title = show.name.toLowerCase();
+      const preferenceHits = normalizedGenres.filter((genre) => summary.includes(genre) || title.includes(genre)).length;
+      const moodHits = moodSeeds.filter((mood) => summary.includes(mood) || title.includes(mood)).length;
+      const ratingScore = show.rating.average ?? 0;
+      const freshnessScore = show.premiered ? Math.max(0, Number(show.premiered.slice(0, 4)) - 2010) / 4 : 1;
+      const historyDepth = Math.min(signals?.watchedEpisodeCount ?? 0, 40) / 4;
+      return { show, score: preferenceHits * 22 + moodHits * 18 + ratingScore * 5 + freshnessScore + historyDepth };
+    })
+    .sort((a, b) => b.score - a.score)
+    .slice(0, 12)
+    .map((item) => item.show);
 
   return shows.map((show, index) => {
     const rating = show.rating.average ? show.rating.average / 2 : null;
+    const preferenceGenre = genres[index % Math.max(genres.length, 1)];
     const serviceHint = services[index % Math.max(services.length, 1)];
     const fit = [
       show.status ?? 'Series',
@@ -983,8 +1106,14 @@ export async function getDiscoverShows(genres: string[] = [], services: string[]
         rating ? rating.toFixed(1) : 'New'
       } rating`,
       body: show.summary?.replace(/<[^>]+>/g, '') ?? 'A fresh recommendation pulled from the live TVmaze catalog.',
-      reason: genres.length ? `Picked from your ${genres[0]} taste profile.` : 'Picked from the live TVmaze catalog.',
-      match: rating ? `${Math.round(rating * 20)}% match` : 'New pick',
+      reason: preferenceGenre
+        ? `Picked from your ${preferenceGenre} taste profile${serviceHint ? ` and ${serviceHint} preference` : ''}.`
+        : signals?.topMoods?.[0]
+          ? `Picked from your ${signals.topMoods[0]} reaction pattern.`
+          : 'Picked from the live TVmaze catalog.',
+      match: rating
+        ? `${Math.min(98, Math.round(rating * 18 + (preferenceGenre ? 8 : 0) + Math.min(signals?.completedShowCount ?? 0, 5)))}% match`
+        : 'New pick',
       fit,
       image:
         show.image?.original ??
@@ -1306,6 +1435,9 @@ export async function createNotification({
   deepLink?: string;
 }) {
   const client = requireSupabase();
+  const crisisControl = await getAppConfig().catch(() => defaultCrisisControl);
+  if (!crisisControl.features.notifications || crisisControl.mode === 'maintenance') return null;
+
   const preferences = await getNotificationPreferences(userId).catch(() => defaultNotificationPreferences);
   const allowed =
     (type === 'Reminder' && preferences.reminders) ||
@@ -1499,6 +1631,30 @@ export async function getAdminSummary(): Promise<AdminSummary> {
   return data as AdminSummary;
 }
 
+export async function getAppConfig(): Promise<CrisisControl> {
+  const client = requireSupabase();
+  const { data, error } = await (client as any).rpc('get_app_config');
+
+  if (error) throw error;
+  return normalizeCrisisControl(data as Partial<CrisisControl>);
+}
+
+export async function updateCrisisControl(config: CrisisControl, incidentMessage: string) {
+  const client = requireSupabase();
+  const { data, error } = await client.functions.invoke('admin-actions', {
+    body: {
+      action: 'set_crisis_control',
+      mode: config.mode,
+      message: config.message,
+      features: config.features,
+      incidentMessage,
+    },
+  });
+
+  if (error) throw error;
+  return normalizeCrisisControl((data as { crisisControl?: Partial<CrisisControl> })?.crisisControl);
+}
+
 export async function retryCatalogImport(jobId: string) {
   const client = requireSupabase();
   const { error } = await client.functions.invoke('admin-actions', {
@@ -1524,6 +1680,16 @@ export async function clearSearchCache(cacheId?: string) {
   });
 
   if (error) throw error;
+}
+
+export async function runDatabaseMaintenance() {
+  const client = requireSupabase();
+  const { data, error } = await client.functions.invoke('database-maintenance', {
+    body: {},
+  });
+
+  if (error) throw error;
+  return data as { ok: boolean; cleanup: Record<string, number | string> };
 }
 
 export async function createSupportIntent(userId?: string) {

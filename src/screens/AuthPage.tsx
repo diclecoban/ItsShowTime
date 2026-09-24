@@ -7,6 +7,8 @@ import { useResponsive } from '../hooks/useResponsive';
 
 export function AuthPage({
   onContinue,
+  onOpenPrivacy,
+  onOpenTerms,
 }: {
   onContinue: (
     mode: 'signin' | 'signup',
@@ -14,13 +16,15 @@ export function AuthPage({
     password: string,
     profile: { displayName: string; username: string }
   ) => Promise<void>;
+  onOpenPrivacy: () => void;
+  onOpenTerms: () => void;
 }) {
   const { isDesktop } = useResponsive();
   const [mode, setMode] = useState<'signin' | 'signup'>('signin');
-  const [email, setEmail] = useState('dicle@example.com');
-  const [password, setPassword] = useState('itsshowtime');
-  const [displayName, setDisplayName] = useState('Dicle');
-  const [username, setUsername] = useState('dicle');
+  const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
+  const [displayName, setDisplayName] = useState('');
+  const [username, setUsername] = useState('');
   const [showValidation, setShowValidation] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const [helperMessage, setHelperMessage] = useState('');
@@ -52,7 +56,7 @@ export function AuthPage({
         setHelperMessage(error instanceof Error ? error.message : 'Something went wrong. Please try again.');
       })
       .finally(() => {
-      setIsLoading(false);
+        setIsLoading(false);
       });
   };
 
@@ -66,7 +70,7 @@ export function AuthPage({
         <Text style={styles.authBody}>
           {mode === 'signin'
             ? 'Pick up your next episode, reactions, lists, and calendar exactly where you left them.'
-            : 'Start tracking shows and movies with spoiler-safe reactions from the beginning.'}
+            : 'Track shows with spoiler-safe reactions.'}
         </Text>
         {isDesktop ? (
           <View style={styles.authDesktopStats}>
@@ -75,6 +79,12 @@ export function AuthPage({
             <MiniStat label="Plan" value="Calendar" />
           </View>
         ) : null}
+        <View style={styles.authPromisePanel}>
+          <Text style={styles.authPromiseTitle}>Built for beta tracking</Text>
+          <Text style={styles.authPromiseBody}>
+            Start with shows. Movies unlock when the catalog budget is ready.
+          </Text>
+        </View>
       </View>
 
       <View style={styles.authFormColumn}>
@@ -154,6 +164,15 @@ export function AuthPage({
             {mode === 'signin' ? 'New here? Create an account' : 'Already have an account? Sign in'}
           </Text>
         </Pressable>
+        <View style={styles.legalLinkRow}>
+          <Pressable onPress={onOpenPrivacy}>
+            <Text style={styles.legalLinkText}>Privacy Policy</Text>
+          </Pressable>
+          <Text style={styles.legalLinkDivider}>/</Text>
+          <Pressable onPress={onOpenTerms}>
+            <Text style={styles.legalLinkText}>Terms</Text>
+          </Pressable>
+        </View>
       </View>
     </ScrollView>
   );

@@ -24,6 +24,8 @@ export function SettingsPage({
   onToggleGenre,
   onToggleService,
   onOpenAdmin,
+  onOpenPrivacy,
+  onOpenTerms,
 }: {
   onBack: () => void;
   onSignOut: () => Promise<void>;
@@ -48,6 +50,8 @@ export function SettingsPage({
   onToggleGenre: (genre: string) => void;
   onToggleService: (service: string) => void;
   onOpenAdmin: () => void;
+  onOpenPrivacy: () => void;
+  onOpenTerms: () => void;
 }) {
   const genres = ['Drama', 'Mystery', 'Comedy', 'Sci-fi', 'Thriller', 'Limited'];
   const [isSigningOut, setIsSigningOut] = useState(false);
@@ -95,6 +99,13 @@ export function SettingsPage({
           <Text style={styles.settingsName}>{displayName}</Text>
           <Text style={styles.settingsEmail}>{email}</Text>
         </View>
+      </View>
+
+      <View style={styles.settingsTrustPanel}>
+        <Text style={styles.settingsTrustTitle}>Account control</Text>
+        <Text style={styles.settingsTrustBody}>
+          Theme, notifications, spoiler protection, legal pages, sign out, and deletion controls are kept in one place for beta testing.
+        </Text>
       </View>
 
       <Text style={styles.sectionTitle}>Preferences</Text>
@@ -200,6 +211,12 @@ export function SettingsPage({
         <SettingRow title="Import watch history" value="CSV, JSON, Trakt" />
         <SettingRow title="Export backup" value="Ready" active />
         {isAdmin && <SettingRow title="Admin tools" value="Imports, reports, cache" active onPress={onOpenAdmin} />}
+      </View>
+
+      <Text style={styles.sectionTitle}>Legal</Text>
+      <View style={styles.settingsGroup}>
+        <SettingRow title="Privacy Policy" value="Data, deletion, providers" onPress={onOpenPrivacy} />
+        <SettingRow title="Terms of Service" value="Community and catalog terms" onPress={onOpenTerms} />
       </View>
 
       <Pressable style={styles.signOutButton} onPress={handleSignOut} disabled={isSigningOut}>

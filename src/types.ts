@@ -1,6 +1,6 @@
 import type { LucideIcon } from 'lucide-react';
 
-export type Tab = 'shows' | 'movies' | 'discover' | 'calendar' | 'library' | 'profile';
+export type Tab = 'today' | 'shows' | 'movies' | 'discover' | 'calendar' | 'library' | 'profile';
 
 export type Episode = {
   id: number;
@@ -147,9 +147,13 @@ export type NotificationPreferences = {
 export type CommunityComment = {
   id: string;
   user: string;
+  userId?: string;
   mood: string;
   text: string;
   likes: number;
+  replyCount?: number;
+  isSpoiler?: boolean;
+  parentCommentId?: string | null;
   likedByMe?: boolean;
   canDelete?: boolean;
   canReport?: boolean;
@@ -184,6 +188,8 @@ export type UserProfile = {
 };
 
 export type AdminSummary = {
+  crisisControl?: CrisisControl;
+  incidents?: IncidentLog[];
   operations?: {
     failedJobs: number;
     pendingJobs: number;
@@ -196,7 +202,15 @@ export type AdminSummary = {
     slowEvents24h: number;
     avgSearchMs24h: number;
     avgImportMs24h: number;
+    expiredCacheEntries?: number;
+    staleReadNotifications?: number;
+    oldEdgeEvents?: number;
+    oldDeliveries?: number;
   };
+  tableGrowth?: Array<{
+    tableName: string;
+    rowCount: number;
+  }>;
   edgeEvents?: Array<{
     id: string;
     functionName: string;
@@ -240,6 +254,30 @@ export type AdminSummary = {
     currency: string;
     openedIntents: number;
   };
+};
+
+export type CrisisControl = {
+  mode: 'normal' | 'degraded' | 'maintenance' | 'readonly';
+  message: string;
+  features: {
+    externalSearch: boolean;
+    catalogImport: boolean;
+    communityWrites: boolean;
+    notifications: boolean;
+    realtime: boolean;
+    newSignups: boolean;
+    queueWorkers: boolean;
+    support: boolean;
+  };
+};
+
+export type IncidentLog = {
+  id: string;
+  severity: 'info' | 'warning' | 'critical';
+  action: string;
+  message: string;
+  createdAt: string;
+  metadata?: Record<string, unknown>;
 };
 
 export type EpisodeReaction = {

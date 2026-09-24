@@ -1,8 +1,8 @@
-import { ArrowLeft, Check, Lock, Plus, Search, Sparkles, Tv, X } from 'lucide-react';
+import { ArrowLeft, Check, Lock, Plus, Search, SlidersHorizontal, Sparkles, Tv, X } from 'lucide-react';
 import { useEffect, useMemo, useState } from 'react';
 import { ImageBackground, Pressable, Text, TextInput, View } from 'react-native';
 
-import { EmptyState, FilterChips } from '../components';
+import { CachedImageBackground, EmptyState, FilterChips } from '../components';
 import { bg, gold, ink, muted } from '../theme';
 import { styles } from '../styles';
 import { useResponsive } from '../hooks/useResponsive';
@@ -96,15 +96,22 @@ export function SearchPage({
         <Text style={styles.detailBackText}>Back</Text>
       </Pressable>
 
-      <View style={styles.searchBox}>
-        <Search color={muted} size={20} />
-        <TextInput
-          value={query}
-          onChangeText={setQuery}
-          placeholder="Search shows..."
-          placeholderTextColor={muted}
-          style={styles.searchInput}
-        />
+      <View style={styles.searchHeroPanel}>
+        <View style={styles.searchHeroCopy}>
+          <Text style={styles.libraryKicker}>Search</Text>
+          <Text style={styles.searchHeroTitle}>Find your next show fast</Text>
+          <Text style={styles.searchHeroBody}>Live catalog search, your platform taste, and library status stay together here.</Text>
+        </View>
+        <View style={styles.searchBox}>
+          <Search color={muted} size={20} />
+          <TextInput
+            value={query}
+            onChangeText={setQuery}
+            placeholder="Search shows..."
+            placeholderTextColor={muted}
+            style={styles.searchInput}
+          />
+        </View>
       </View>
 
       {addedTitle && (
@@ -136,25 +143,31 @@ export function SearchPage({
         ))}
       </View>
 
-      <FilterChips options={filters} active={activeFilter} onChange={setActiveFilter} />
+      <View style={styles.searchRefinePanel}>
+        <View style={styles.sectionHeaderRow}>
+          <Text style={styles.sectionTitle}>Refine</Text>
+          <SlidersHorizontal color={gold} size={18} />
+        </View>
+        <FilterChips options={filters} active={activeFilter} onChange={setActiveFilter} />
 
-      <Text style={styles.sectionTitle}>Genres</Text>
-      <FilterChips options={genreFilters} active={activeGenre} onChange={setActiveGenre} />
+        <Text style={styles.searchRefineLabel}>Genres</Text>
+        <FilterChips options={genreFilters} active={activeGenre} onChange={setActiveGenre} />
 
-      <Text style={styles.sectionTitle}>Platforms</Text>
-      <View style={styles.platformFilterGrid}>
-        {platformFilters.map((platform) => (
-          <Pressable
-            key={platform}
-            style={[styles.platformFilterCard, activePlatform === platform && styles.platformFilterCardActive]}
-            onPress={() => setActivePlatform(platform)}
-          >
-            <Tv color={activePlatform === platform ? bg : gold} size={17} />
-            <Text style={[styles.platformFilterText, activePlatform === platform && styles.platformFilterTextActive]}>
-              {platform}
-            </Text>
-          </Pressable>
-        ))}
+        <Text style={styles.searchRefineLabel}>Platforms</Text>
+        <View style={styles.platformFilterGrid}>
+          {platformFilters.map((platform) => (
+            <Pressable
+              key={platform}
+              style={[styles.platformFilterCard, activePlatform === platform && styles.platformFilterCardActive]}
+              onPress={() => setActivePlatform(platform)}
+            >
+              <Tv color={activePlatform === platform ? bg : gold} size={17} />
+              <Text style={[styles.platformFilterText, activePlatform === platform && styles.platformFilterTextActive]}>
+                {platform}
+              </Text>
+            </Pressable>
+          ))}
+        </View>
       </View>
 
       {selectedActor && (
@@ -208,11 +221,10 @@ export function SearchPage({
                 Promise.resolve(onSelectResult(result));
               }}
             >
-              <ImageBackground
-                source={{ uri: result.image }}
+              <CachedImageBackground
+                uri={result.image}
                 style={viewMode === 'Grid' && !isCompact ? styles.searchGridPoster : styles.searchPoster}
                 imageStyle={viewMode === 'Grid' && !isCompact ? styles.searchGridPosterImage : styles.searchPosterImage}
-                resizeMode="cover"
               />
               <View style={styles.searchResultCopy}>
                 <Text style={styles.searchResultTitle}>{result.title}</Text>

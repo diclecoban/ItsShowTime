@@ -1,8 +1,8 @@
 import { Grid2X2, Library, List, ListPlus, SlidersHorizontal } from 'lucide-react';
 import { useEffect, useMemo, useState } from 'react';
-import { ImageBackground, Pressable, Text, View } from 'react-native';
+import { Pressable, Text, View } from 'react-native';
 
-import { EmptyState, ProgressRail } from '../components';
+import { CachedImageBackground, ProgressRail } from '../components';
 import { bg, gold, ink, muted } from '../theme';
 import { styles } from '../styles';
 import { useResponsive } from '../hooks/useResponsive';
@@ -50,17 +50,17 @@ export function LibraryPage({
   return (
     <View>
       <View style={[styles.libraryDashboard, isCompact && styles.libraryDashboardCompact]}>
-        <View style={styles.libraryHero}>
+        <View style={[styles.libraryHero, isCompact && styles.libraryHeroCompact]}>
           <Text style={styles.libraryKicker}>My library</Text>
           <Text style={styles.libraryTitle}>{shows.length} tracked shows</Text>
-          <Text style={styles.libraryBody}>Everything you are watching, pausing, finishing, or saving for later.</Text>
-          <Pressable style={styles.openListsButton} onPress={onOpenLists}>
+          {!isCompact && <Text style={styles.libraryBody}>Your tracked shows, all in one place.</Text>}
+          <Pressable style={({ pressed }) => [styles.openListsButton, pressed && styles.pressablePressed]} onPress={onOpenLists}>
             <ListPlus color={bg} size={18} />
             <Text style={styles.openListsText}>Open lists</Text>
           </Pressable>
         </View>
 
-        <View style={styles.libraryDashboardPanel}>
+        {!isCompact && <View style={styles.libraryDashboardPanel}>
           <Text style={styles.libraryKicker}>Watch health</Text>
           <Text style={styles.libraryPanelValue}>{totalEpisodes ? Math.round((watchedEpisodes / totalEpisodes) * 100) : 0}%</Text>
           <Text style={styles.libraryBody}>{watchedEpisodes}/{totalEpisodes} episodes watched across your library.</Text>
@@ -68,7 +68,7 @@ export function LibraryPage({
           <Text style={styles.libraryPanelLabel}>Needs attention</Text>
           {staleShows.length ? (
             staleShows.map((show) => (
-              <Pressable key={show.title} style={styles.libraryMiniRow} onPress={() => onSelectShow(show)}>
+              <Pressable key={show.title} style={({ pressed }) => [styles.libraryMiniRow, pressed && styles.pressablePressed]} onPress={() => onSelectShow(show)}>
                 <Text style={styles.libraryMiniTitle}>{show.title}</Text>
                 <Text style={styles.libraryMiniMeta}>{show.progress}%</Text>
               </Pressable>
@@ -76,52 +76,58 @@ export function LibraryPage({
           ) : (
             <Text style={styles.libraryMiniEmpty}>Your active shelf looks tidy.</Text>
           )}
-        </View>
+        </View>}
       </View>
 
-      <View style={styles.libraryFilters}>
+      <View style={[styles.libraryFilters, isCompact && styles.libraryFiltersCompact]}>
         {filters.map((filter) => (
-          <Pressable key={filter} onPress={() => setActiveFilter(filter)}>
+            <Pressable key={filter} style={({ pressed }) => pressed && styles.pressablePressed} onPress={() => setActiveFilter(filter)}>
             <Text style={[styles.libraryFilter, activeFilter === filter && styles.libraryFilterActive]}>{filter}</Text>
           </Pressable>
         ))}
       </View>
 
-      <View style={styles.libraryToolbar}>
+      {!isCompact && <View style={styles.libraryToolbar}>
         <View style={styles.librarySortGroup}>
           <SlidersHorizontal color={muted} size={17} />
           {sortOptions.map((sort) => (
-            <Pressable key={sort} onPress={() => setActiveSort(sort)}>
+            <Pressable key={sort} style={({ pressed }) => pressed && styles.pressablePressed} onPress={() => setActiveSort(sort)}>
               <Text style={[styles.librarySortChip, activeSort === sort && styles.librarySortChipActive]}>{sort}</Text>
             </Pressable>
           ))}
         </View>
         <View style={styles.libraryViewToggle}>
-          <Pressable style={[styles.libraryViewButton, viewMode === 'List' && styles.libraryViewButtonActive]} onPress={() => setViewMode('List')}>
+          <Pressable style={({ pressed }) => [styles.libraryViewButton, viewMode === 'List' && styles.libraryViewButtonActive, pressed && styles.pressablePressed]} onPress={() => setViewMode('List')}>
             <List color={viewMode === 'List' ? bg : ink} size={17} />
           </Pressable>
-          <Pressable style={[styles.libraryViewButton, viewMode === 'Grid' && styles.libraryViewButtonActive]} onPress={() => setViewMode('Grid')}>
+          <Pressable style={({ pressed }) => [styles.libraryViewButton, viewMode === 'Grid' && styles.libraryViewButtonActive, pressed && styles.pressablePressed]} onPress={() => setViewMode('Grid')}>
             <Grid2X2 color={viewMode === 'Grid' ? bg : ink} size={17} />
           </Pressable>
         </View>
-      </View>
+      </View>}
 
       {filteredShows.length === 0 ? (
-        <EmptyState
-          icon={Library}
-          title={`No ${activeFilter.toLowerCase()} shows yet`}
-          body="Add a show from search or discover to start filling this shelf."
-          action="Browse discover"
-        />
+        <View style={[styles.libraryShelfStarter, isCompact && styles.libraryShelfStarterCompact]}>
+          <View style={styles.libraryShelfIcon}>
+            <Library color={gold} size={25} />
+          </View>
+          <View style={styles.libraryShelfCopy}>
+            <Text style={styles.libraryShowTitle}>{`No ${activeFilter.toLowerCase()} shows yet`}</Text>
+            <Text style={styles.libraryNext}>Add shows to fill this shelf.</Text>
+          </View>
+          <Pressable style={({ pressed }) => [styles.openListsButton, styles.libraryShelfButton, pressed && styles.pressablePressed]} onPress={onOpenLists}>
+            <ListPlus color={bg} size={18} />
+            <Text style={styles.openListsText}>Plan lists</Text>
+          </Pressable>
+        </View>
       ) : (
         <View style={[styles.libraryList, useGrid && styles.libraryGrid]}>
           {visibleShows.map((show) => (
-            <Pressable key={show.title} style={[styles.libraryCard, isCompact && styles.libraryCardCompact, useGrid && styles.libraryGridCard]} onPress={() => onSelectShow(show)}>
-              <ImageBackground
-                source={{ uri: show.image }}
+            <Pressable key={show.title} style={({ pressed }) => [styles.libraryCard, isCompact && styles.libraryCardCompact, useGrid && styles.libraryGridCard, pressed && styles.pressablePressed]} onPress={() => onSelectShow(show)}>
+              <CachedImageBackground
+                uri={show.image}
                 style={[styles.libraryPoster, isCompact && styles.libraryPosterCompact, useGrid && styles.libraryGridPoster]}
                 imageStyle={styles.libraryPosterImage}
-                resizeMode="cover"
               />
               <View style={styles.libraryCopy}>
                 <View style={styles.libraryTopLine}>
@@ -137,7 +143,7 @@ export function LibraryPage({
             </Pressable>
           ))}
           {hasMoreShows ? (
-            <Pressable style={styles.adminWideActionButton} onPress={() => setVisibleShowCount((count) => count + 18)}>
+            <Pressable style={({ pressed }) => [styles.adminWideActionButton, pressed && styles.pressablePressed]} onPress={() => setVisibleShowCount((count) => count + 18)}>
               <Text style={styles.adminActionText}>Load more</Text>
             </Pressable>
           ) : null}

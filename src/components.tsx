@@ -1,7 +1,7 @@
-import { Bell, Check, Search, Tv } from 'lucide-react';
+import { Bell, Check, RefreshCw, Search, Tv } from 'lucide-react';
 import type { ReactNode } from 'react';
 import { ImageBackground, Pressable, Text, View } from 'react-native';
-import type { StyleProp, ViewStyle } from 'react-native';
+import type { ImageStyle, StyleProp, ViewStyle } from 'react-native';
 
 import { accent, bg, ink, muted } from './theme';
 import { useResponsive } from './hooks/useResponsive';
@@ -26,10 +26,10 @@ export function ScreenHeader({
         <Text style={[styles.title, isCompact && styles.titleCompact]}>{title}</Text>
       </View>
       <View style={styles.headerActions}>
-        <Pressable style={styles.iconButton} onPress={onOpenSearch}>
+        <Pressable style={({ pressed }) => [styles.iconButton, pressed && styles.pressablePressed]} onPress={onOpenSearch}>
           <Search color={ink} size={20} />
         </Pressable>
-        <Pressable style={styles.iconButton} onPress={onOpenNotifications}>
+        <Pressable style={({ pressed }) => [styles.iconButton, pressed && styles.pressablePressed]} onPress={onOpenNotifications}>
           <Bell color={ink} size={20} />
         </Pressable>
       </View>
@@ -79,13 +79,36 @@ export function MediaCard({
 
   if (onPress) {
     return (
-      <Pressable style={style} onPress={onPress}>
+      <Pressable style={({ pressed }) => [style, styles.motionCard, pressed && styles.pressablePressed]} onPress={onPress}>
         {content}
       </Pressable>
     );
   }
 
   return <View style={style}>{content}</View>;
+}
+
+export function CachedImageBackground({
+  uri,
+  style,
+  imageStyle,
+  children,
+}: {
+  uri: string;
+  style: StyleProp<ViewStyle>;
+  imageStyle?: StyleProp<ImageStyle>;
+  children?: ReactNode;
+}) {
+  return (
+    <ImageBackground
+      source={{ uri, cache: 'force-cache' }}
+      style={style}
+      imageStyle={imageStyle}
+      resizeMode="cover"
+    >
+      {children}
+    </ImageBackground>
+  );
 }
 
 export function EpisodeCard({ episode, onPress }: { episode: Episode; onPress: () => void }) {
@@ -167,6 +190,33 @@ export function EmptyState({
   );
 }
 
+export function BackendState({
+  title,
+  body,
+  mode = 'loading',
+  onRetry,
+}: {
+  title: string;
+  body: string;
+  mode?: 'loading' | 'error' | 'empty';
+  onRetry?: () => void | Promise<void>;
+}) {
+  return (
+    <View style={styles.backendState}>
+      <View style={[styles.backendStateIcon, mode === 'error' && styles.backendStateIconError]}>
+        <RefreshCw color={bg} size={22} />
+      </View>
+      <Text style={styles.backendStateTitle}>{title}</Text>
+      <Text style={styles.backendStateBody}>{body}</Text>
+      {onRetry ? (
+        <Pressable style={styles.adminWideActionButton} onPress={onRetry}>
+          <Text style={styles.adminActionText}>Retry</Text>
+        </Pressable>
+      ) : null}
+    </View>
+  );
+}
+
 export function SettingRow({
   title,
   value,
@@ -178,10 +228,8 @@ export function SettingRow({
   active?: boolean;
   onPress?: () => void;
 }) {
-  const Container = onPress ? Pressable : View;
-
-  return (
-    <Container style={styles.settingRow} onPress={onPress}>
+  const content = (
+    <>
       <View>
         <Text style={styles.settingTitle}>{title}</Text>
         <Text style={styles.settingValue}>{value}</Text>
@@ -189,7 +237,21 @@ export function SettingRow({
       <View style={[styles.settingToggle, active && styles.settingToggleActive]}>
         <View style={[styles.settingToggleKnob, active && styles.settingToggleKnobActive]} />
       </View>
-    </Container>
+    </>
+  );
+
+  if (onPress) {
+    return (
+      <Pressable style={({ pressed }) => [styles.settingRow, pressed && styles.pressablePressed]} onPress={onPress}>
+        {content}
+      </Pressable>
+    );
+  }
+
+  return (
+    <View style={styles.settingRow}>
+      {content}
+    </View>
   );
 }
 
@@ -216,7 +278,16 @@ export function NavItem({
   const { isDesktop } = useResponsive();
 
   return (
-    <Pressable style={[styles.navItem, isDesktop && styles.navItemDesktop, active && isDesktop && styles.navItemDesktopActive]} onPress={onPress}>
+    <Pressable
+      style={({ pressed }) => [
+        styles.navItem,
+        isDesktop && styles.navItemDesktop,
+        active && isDesktop && styles.navItemDesktopActive,
+        active && !isDesktop && styles.navItemActiveMobile,
+        pressed && styles.navItemPressed,
+      ]}
+      onPress={onPress}
+    >
       <Icon color={active ? accent : muted} size={24} strokeWidth={active ? 2.8 : 2} />
       <Text style={[styles.navLabel, isDesktop && styles.navLabelDesktop, active && styles.navLabelActive]}>{label}</Text>
     </Pressable>

@@ -97,7 +97,7 @@ export function UpcomingPage({
         <EmptyState
           icon={CalendarDays}
           title="No upcoming episodes"
-          body="When tracked shows announce new dates, they will land here automatically."
+          body="New dates will appear here."
           action="Find shows"
         />
       )}

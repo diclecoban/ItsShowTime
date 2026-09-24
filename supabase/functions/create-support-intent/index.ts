@@ -1,4 +1,5 @@
 import { corsHeaders, jsonResponse } from '../_shared/cors.ts';
+import { getCrisisControl, isFeatureEnabled } from '../_shared/crisisControl.ts';
 import { createSupabaseAdmin } from '../_shared/supabaseAdmin.ts';
 
 Deno.serve(async (request) => {
@@ -11,6 +12,11 @@ Deno.serve(async (request) => {
   }
 
   const supabase = createSupabaseAdmin();
+  const crisisControl = await getCrisisControl(supabase);
+  if (!isFeatureEnabled(crisisControl, 'support')) {
+    return jsonResponse({ error: crisisControl.message || 'Support links are temporarily paused.' }, 503);
+  }
+
   const authorization = request.headers.get('Authorization');
   let userId: string | null = null;
 

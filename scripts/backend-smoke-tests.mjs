@@ -71,6 +71,32 @@ async function main() {
   assert(!libraryProgressError, `get_library_progress failed: ${libraryProgressError?.message}`);
   assert(Array.isArray(libraryProgress), 'get_library_progress did not return an array');
 
+  const { data: recommendationSignals, error: recommendationError } = await authed.rpc('refresh_user_recommendation_signals', {
+    target_user_id: userId,
+  });
+  assert(!recommendationError, `refresh_user_recommendation_signals failed: ${recommendationError?.message}`);
+  assert(Array.isArray(recommendationSignals?.topMoods), 'recommendation signals did not return topMoods array');
+
+  const testPushToken = `ExponentPushToken[smoke-${Date.now()}]`;
+  const { error: tokenWriteError } = await authed.from('device_push_tokens').upsert(
+    {
+      user_id: userId,
+      expo_push_token: testPushToken,
+      platform: 'test',
+    },
+    { onConflict: 'user_id,expo_push_token' }
+  );
+  assert(!tokenWriteError, `user should write own device token: ${tokenWriteError?.message}`);
+
+  const unauthenticated = createClient(url, key, {
+    auth: { persistSession: false, autoRefreshToken: false },
+  });
+  const { data: anonymousTokens, error: anonymousTokensError } = await unauthenticated.from('device_push_tokens').select('id').limit(1);
+  assert(
+    anonymousTokensError || !anonymousTokens?.length,
+    'anon should not receive device_push_tokens rows'
+  );
+
   const { data: adminSummary, error: adminSummaryError } = await authed.rpc('get_admin_summary');
   assert(!adminSummaryError, `get_admin_summary failed: ${adminSummaryError?.message}`);
   assert(!adminSummary?.importJobs, 'non-admin user should not receive admin summary payload');

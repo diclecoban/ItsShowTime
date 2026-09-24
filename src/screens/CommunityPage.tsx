@@ -15,6 +15,8 @@ export function CommunityPage({
   onToggleLike,
   onDeleteComment,
   onReportComment,
+  onLoadReplies,
+  onSubmitReply,
   onLoadMore,
   hasMoreComments,
 }: {
@@ -25,14 +27,19 @@ export function CommunityPage({
   onToggleLike: (comment: CommunityComment) => Promise<void>;
   onDeleteComment: (commentId: string) => Promise<void>;
   onReportComment: (commentId: string) => Promise<void>;
+  onLoadReplies: (commentId: string) => Promise<CommunityComment[]>;
+  onSubmitReply: (comment: CommunityComment, body: string, mood: string) => Promise<void>;
   onLoadMore: () => Promise<void>;
   hasMoreComments: boolean;
 }) {
-  const moods = ['Reacted', 'Loved it', 'Shocked', 'Theory'];
+  const moods = ['Reacted', 'Loved it', 'Shocked', 'Theory', 'Spoiler'];
   const [body, setBody] = useState('');
   const [mood, setMood] = useState(moods[0]);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState('');
+  const [openReplies, setOpenReplies] = useState<Record<string, CommunityComment[]>>({});
+  const [replyBodyByComment, setReplyBodyByComment] = useState<Record<string, string>>({});
+  const [replyingTo, setReplyingTo] = useState('');
 
   const submitComment = async () => {
     const trimmedBody = body.trim();
@@ -49,6 +56,31 @@ export function CommunityPage({
     } finally {
       setIsSubmitting(false);
     }
+  };
+
+  const toggleReplies = async (comment: CommunityComment) => {
+    if (openReplies[comment.id]) {
+      setOpenReplies((current) => {
+        const next = { ...current };
+        delete next[comment.id];
+        return next;
+      });
+      return;
+    }
+
+    const replies = await onLoadReplies(comment.id);
+    setOpenReplies((current) => ({ ...current, [comment.id]: replies }));
+  };
+
+  const submitReply = async (comment: CommunityComment) => {
+    const trimmedBody = replyBodyByComment[comment.id]?.trim();
+    if (!trimmedBody) return;
+
+    await onSubmitReply(comment, trimmedBody, mood);
+    const replies = await onLoadReplies(comment.id);
+    setOpenReplies((current) => ({ ...current, [comment.id]: replies }));
+    setReplyBodyByComment((current) => ({ ...current, [comment.id]: '' }));
+    setReplyingTo('');
   };
 
   return (
@@ -132,6 +164,9 @@ export function CommunityPage({
                     {comment.status === 'reported' && (
                       <Text style={styles.commentModerationText}>Under spoiler review</Text>
                     )}
+                    {comment.isSpoiler && (
+                      <Text style={styles.commentModerationText}>Spoiler marked</Text>
+                    )}
                     <Text style={styles.commentText}>{comment.text}</Text>
                     <View style={styles.commentActionRow}>
                       <Pressable style={styles.commentActionButton} onPress={() => onToggleLike(comment)}>
@@ -141,6 +176,15 @@ export function CommunityPage({
                           size={15}
                         />
                         <Text style={styles.commentLikes}>{comment.likes} likes</Text>
+                      </Pressable>
+                      <Pressable style={styles.commentActionButton} onPress={() => toggleReplies(comment)}>
+                        <MessageCircle color={muted} size={15} />
+                        <Text style={styles.commentLikes}>
+                          {openReplies[comment.id] ? 'Hide replies' : `${comment.replyCount ?? 0} replies`}
+                        </Text>
+                      </Pressable>
+                      <Pressable style={styles.commentActionButton} onPress={() => setReplyingTo(replyingTo === comment.id ? '' : comment.id)}>
+                        <Text style={styles.commentLikes}>Reply</Text>
                       </Pressable>
                       {comment.canDelete && (
                         <Pressable style={styles.commentActionButton} onPress={() => onDeleteComment(comment.id)}>
@@ -155,6 +199,31 @@ export function CommunityPage({
                         </Pressable>
                       )}
                     </View>
+                    {replyingTo === comment.id ? (
+                      <View style={styles.replyComposer}>
+                        <TextInput
+                          style={styles.replyInput}
+                          value={replyBodyByComment[comment.id] ?? ''}
+                          onChangeText={(value) => setReplyBodyByComment((current) => ({ ...current, [comment.id]: value }))}
+                          placeholder={`Reply to ${comment.user}...`}
+                          placeholderTextColor={muted}
+                        />
+                        <Pressable style={styles.replySubmit} onPress={() => submitReply(comment)}>
+                          <Text style={styles.adminActionText}>Send</Text>
+                        </Pressable>
+                      </View>
+                    ) : null}
+                    {openReplies[comment.id]?.length ? (
+                      <View style={styles.replyThread}>
+                        {openReplies[comment.id].map((reply) => (
+                          <View key={reply.id} style={styles.replyItem}>
+                            <Text style={styles.commentUser}>{reply.user}</Text>
+                            {reply.isSpoiler ? <Text style={styles.commentModerationText}>Spoiler marked</Text> : null}
+                            <Text style={styles.commentText}>{reply.text}</Text>
+                          </View>
+                        ))}
+                      </View>
+                    ) : null}
                   </View>
                 </View>
               ))}
@@ -168,7 +237,7 @@ export function CommunityPage({
             <EmptyState
               icon={MessageCircle}
               title="No comments yet"
-              body="Be the first person to leave a spoiler-safe reaction here."
+              body="Start the conversation."
             />
           )}
         </>

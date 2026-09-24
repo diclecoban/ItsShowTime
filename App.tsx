@@ -1,28 +1,33 @@
 import { StatusBar } from 'expo-status-bar';
-import { Bell, CalendarDays, Clapperboard, Compass, Library, Tv, UserRound } from 'lucide-react';
+import { Bell, CalendarDays, Clapperboard, Compass, Home, Library, RefreshCw, Tv, UserRound } from 'lucide-react';
 import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { SafeAreaView, ScrollView, Text, View } from 'react-native';
+import { AppState, Platform, Pressable, SafeAreaView, ScrollView, Text, View } from 'react-native';
 import { Navigate, Route, Routes, useLocation, useNavigate, useParams } from 'react-router-dom';
 
-import { EmptyState, EpisodeCard, NavItem, ScreenHeader } from './src/components';
+import { EpisodeCard, NavItem, ScreenHeader } from './src/components';
 import { usePreferences } from './src/hooks/usePreferences';
 import { useResponsive } from './src/hooks/useResponsive';
+import { triggerSelectionFeedback, triggerSuccessFeedback } from './src/lib/feedback';
 import {
   getCurrentSession,
+  defaultCrisisControl,
   addShowToLibrary,
   addMovieTitleToList,
   addShowTitleToList,
   clearSearchCache,
   createCommunityComment,
+  createCommunityReply,
   createNotification,
   createSupportIntent,
   deleteCommunityComment,
   createList as saveCustomList,
   getAdminSummary,
+  getAppConfig,
   findEpisodeByShowAndCode,
   findMovieByTitle,
   findShowByTitle,
   getHydratedLists,
+  getCommentReplies,
   getCommunityComments,
   getProfile,
   getProfileStats,
@@ -40,9 +45,11 @@ import {
   markEpisodeWatched as saveEpisodeWatched,
   markMovieWatched as saveMovieWatched,
   requestAccountDeletion,
+  registerDevicePushToken,
   hideReportedComment,
   reportCommunityComment,
   retryCatalogImport,
+  runDatabaseMaintenance,
   saveOnboardingPreferences,
   saveEpisodeReaction,
   saveNotificationPreferences,
@@ -57,10 +64,12 @@ import {
   toggleListPrivacy,
   toggleCommentLike,
   toggleReminderForEpisode,
+  updateCrisisControl,
 } from './src/lib/itsShowTimeApi';
+import { requestExpoPushToken } from './src/lib/pushNotifications';
 import { isSupabaseConfigured, supabase } from './src/lib/supabase';
 import { styles } from './src/styles';
-import { gold, themes } from './src/theme';
+import { bg, gold, themes } from './src/theme';
 import type {
   CommunityContext,
   CustomList,
@@ -71,6 +80,7 @@ import type {
   NotificationItem,
   NotificationPreferences,
   AdminSummary,
+  CrisisControl,
   ProfileStats,
   UserProfile,
   CommunityComment,
@@ -82,7 +92,7 @@ import type {
   UpcomingGroup,
 } from './src/types';
 
-const mainTabs: Tab[] = ['shows', 'movies', 'discover', 'calendar', 'library', 'profile'];
+const mainTabs: Tab[] = ['today', 'shows', 'movies', 'discover', 'calendar', 'library', 'profile'];
 type ShowSyncState = 'syncing' | 'ready' | 'failed';
 
 const AuthPage = lazy(() => import('./src/screens/AuthPage').then((module) => ({ default: module.AuthPage })));
@@ -93,6 +103,7 @@ const EpisodeReactionPage = lazy(() =>
   import('./src/screens/EpisodeReactionPage').then((module) => ({ default: module.EpisodeReactionPage }))
 );
 const LibraryPage = lazy(() => import('./src/screens/LibraryPage').then((module) => ({ default: module.LibraryPage })));
+const LegalPage = lazy(() => import('./src/screens/LegalPage').then((module) => ({ default: module.LegalPage })));
 const ListsPage = lazy(() => import('./src/screens/ListsPage').then((module) => ({ default: module.ListsPage })));
 const MovieDetailPage = lazy(() => import('./src/screens/MovieDetailPage').then((module) => ({ default: module.MovieDetailPage })));
 const MoviesPage = lazy(() => import('./src/screens/MoviesPage').then((module) => ({ default: module.MoviesPage })));
@@ -106,6 +117,7 @@ const ProfileDashboard = lazy(() =>
 const SearchPage = lazy(() => import('./src/screens/SearchPage').then((module) => ({ default: module.SearchPage })));
 const SettingsPage = lazy(() => import('./src/screens/SettingsPage').then((module) => ({ default: module.SettingsPage })));
 const ShowDetail = lazy(() => import('./src/screens/ShowDetail').then((module) => ({ default: module.ShowDetail })));
+const TodayPage = lazy(() => import('./src/screens/TodayPage').then((module) => ({ default: module.TodayPage })));
 const UpcomingPage = lazy(() => import('./src/screens/UpcomingPage').then((module) => ({ default: module.UpcomingPage })));
 
 function toSlug(value: string) {
@@ -122,6 +134,7 @@ export default function App() {
   const location = useLocation();
   const [isAuthed, setIsAuthed] = useState(false);
   const [isAuthLoading, setIsAuthLoading] = useState(isSupabaseConfigured);
+  const [isSplashSettled, setIsSplashSettled] = useState(false);
   const [currentUser, setCurrentUser] = useState<{ id: string; email: string } | null>(null);
   const [profile, setProfile] = useState<UserProfile | null>(null);
   const [spoilerMode, setSpoilerMode] = useState<'strict' | 'moderate' | 'off'>('strict');
@@ -136,6 +149,7 @@ export default function App() {
   const [selected, setSelected] = useState<Episode | null>(null);
   const [communityContext, setCommunityContext] = useState<CommunityContext | null>(null);
   const [queueIndex, setQueueIndex] = useState(0);
+  const [showsQueueTab, setShowsQueueTab] = useState<'watchNext' | 'upcoming'>('watchNext');
   const {
     activeTheme,
     selectedGenres,
@@ -152,6 +166,10 @@ export default function App() {
   const [trackedMovies, setTrackedMovies] = useState<Movie[]>([]);
   const [trackedUpcomingGroups, setTrackedUpcomingGroups] = useState<UpcomingGroup[]>([]);
   const [trackedNotifications, setTrackedNotifications] = useState<NotificationItem[]>([]);
+  const [notificationsPage, setNotificationsPage] = useState(0);
+  const [hasMoreNotifications, setHasMoreNotifications] = useState(false);
+  const [isNotificationsLoading, setIsNotificationsLoading] = useState(false);
+  const [notificationsError, setNotificationsError] = useState('');
   const [trackedLists, setTrackedLists] = useState<CustomList[]>([]);
   const [discoverItems, setDiscoverItems] = useState<DiscoverItem[]>([]);
   const [libraryTitles, setLibraryTitles] = useState<string[]>([]);
@@ -169,7 +187,11 @@ export default function App() {
   const [recentActivity, setRecentActivity] = useState<RecentActivity[]>([]);
   const [movieReactions, setMovieReactions] = useState<Record<number, string>>({});
   const [adminSummary, setAdminSummary] = useState<AdminSummary | null>(null);
+  const [isAdminSummaryLoading, setIsAdminSummaryLoading] = useState(false);
+  const [adminSummaryError, setAdminSummaryError] = useState('');
+  const [crisisControl, setCrisisControl] = useState<CrisisControl>(defaultCrisisControl);
   const realtimeTimers = useRef<Record<string, ReturnType<typeof setTimeout>>>({});
+  const isAppActive = useRef(true);
 
   const fallbackProfileStats = useMemo(() => {
     const watchedEpisodes = trackedLibraryShows.reduce((total, show) => total + show.watchedEpisodes, 0);
@@ -189,11 +211,35 @@ export default function App() {
     };
   }, [communityComments.length, trackedLibraryShows, trackedMovies, trackedUpcomingGroups]);
   const profileStats = backendProfileStats ?? fallbackProfileStats;
+  const showsUpcomingItems = useMemo(
+    () => trackedUpcomingGroups.flatMap((group) => group.items.map((item) => ({ ...item, group }))).slice(0, 8),
+    [trackedUpcomingGroups]
+  );
 
   const activeDiscovery = discoverItems.length ? discoverItems[queueIndex % discoverItems.length] : undefined;
   const nextDiscoveries = discoverItems.filter((_, index) => index !== queueIndex % Math.max(discoverItems.length, 1)).slice(0, 3);
-  const activeTab = mainTabs.find((tab) => location.pathname === `/${tab}`) ?? 'shows';
+  const activeTab = mainTabs.find((tab) => location.pathname === `/${tab}`) ?? 'today';
   const shouldShowNav = mainTabs.some((tab) => location.pathname === `/${tab}`);
+  const isSyncingBackend =
+    Object.values(showDetailLoading).some(Boolean) ||
+    Object.values(showSyncStatus).some((status) => status === 'syncing');
+  const isLegalPath = location.pathname === '/privacy' || location.pathname === '/terms';
+  const isWriteLimited = crisisControl.mode === 'maintenance' || crisisControl.mode === 'readonly';
+  const crisisMessage =
+    crisisControl.message ||
+    (crisisControl.mode === 'maintenance'
+      ? 'It’s Showtime is in maintenance mode. Your watch data is safe.'
+      : crisisControl.mode === 'readonly'
+        ? 'Read-only mode is active. Writes are temporarily paused.'
+        : crisisControl.mode === 'degraded'
+        ? 'Some features are temporarily limited while we stabilize the app.'
+        : '');
+  const shouldShowSplash = isAuthLoading || !isSplashSettled;
+
+  useEffect(() => {
+    const timer = setTimeout(() => setIsSplashSettled(true), 3000);
+    return () => clearTimeout(timer);
+  }, []);
 
   const mapCatalogToSearchResults = (
     catalog: Awaited<ReturnType<typeof searchCatalog>>,
@@ -255,9 +301,8 @@ export default function App() {
     tmdbId: item.tmdbId,
   });
 
-  const refreshNotifications = useCallback(async (userId: string) => {
-    const notifications = await getNotifications(userId);
-    setTrackedNotifications(
+  const mapNotifications = useCallback(
+    (notifications: Awaited<ReturnType<typeof getNotifications>>) =>
       notifications.map((notification) => ({
         id: notification.id,
         type: notification.type,
@@ -267,9 +312,44 @@ export default function App() {
         unread: !notification.read_at,
         icon: Bell,
         tone: notification.read_at ? '#34392e' : gold,
-      }))
-    );
-  }, []);
+      })),
+    []
+  );
+
+  const refreshNotifications = useCallback(
+    async (userId: string, generate = false) => {
+      setIsNotificationsLoading(true);
+      setNotificationsError('');
+      try {
+        const notifications = await getNotifications(userId, { limit: 20, offset: 0, generate });
+        setTrackedNotifications(mapNotifications(notifications));
+        setNotificationsPage(0);
+        setHasMoreNotifications(notifications.length === 20);
+      } catch {
+        setNotificationsError('Notifications could not be loaded.');
+      } finally {
+        setIsNotificationsLoading(false);
+      }
+    },
+    [mapNotifications]
+  );
+
+  const loadMoreNotifications = useCallback(async () => {
+    if (!currentUser || isNotificationsLoading || !hasMoreNotifications) return;
+    setIsNotificationsLoading(true);
+    setNotificationsError('');
+    try {
+      const nextPage = notificationsPage + 1;
+      const notifications = await getNotifications(currentUser.id, { limit: 20, offset: nextPage * 20 });
+      setTrackedNotifications((current) => [...current, ...mapNotifications(notifications)]);
+      setNotificationsPage(nextPage);
+      setHasMoreNotifications(notifications.length === 20);
+    } catch {
+      setNotificationsError('More notifications could not be loaded.');
+    } finally {
+      setIsNotificationsLoading(false);
+    }
+  }, [currentUser, hasMoreNotifications, isNotificationsLoading, mapNotifications, notificationsPage]);
 
   const refreshUpcoming = useCallback(async (userId: string) => {
     const groups = await getUpcomingGroups(userId);
@@ -306,7 +386,7 @@ export default function App() {
         refreshLibrary(userId),
         refreshWatchNext(userId),
         refreshUpcoming(userId),
-        refreshNotifications(userId),
+        refreshNotifications(userId, true),
         refreshLists(userId),
         getRecentActivity(userId).then(setRecentActivity),
         getProfileStats(userId).then(setBackendProfileStats),
@@ -337,6 +417,8 @@ export default function App() {
   }, []);
 
   const scheduleRealtimeRefresh = useCallback((key: string, task: () => Promise<unknown> | void, delay = 450) => {
+    if (!isAppActive.current) return;
+
     const existingTimer = realtimeTimers.current[key];
     if (existingTimer) clearTimeout(existingTimer);
 
@@ -353,6 +435,14 @@ export default function App() {
     },
     []
   );
+
+  useEffect(() => {
+    const subscription = AppState.addEventListener('change', (nextState) => {
+      isAppActive.current = nextState === 'active';
+    });
+
+    return () => subscription.remove();
+  }, []);
 
   useEffect(() => {
     if (!supabase) {
@@ -386,6 +476,27 @@ export default function App() {
     return () => {
       isMounted = false;
       data.subscription.unsubscribe();
+    };
+  }, []);
+
+  useEffect(() => {
+    if (!supabase) return undefined;
+
+    let isMounted = true;
+    const refreshConfig = () => {
+      getAppConfig()
+        .then((config) => {
+          if (isMounted) setCrisisControl(config);
+        })
+        .catch(() => undefined);
+    };
+
+    refreshConfig();
+    const timer = setInterval(refreshConfig, 60_000);
+
+    return () => {
+      isMounted = false;
+      clearInterval(timer);
     };
   }, []);
 
@@ -436,29 +547,42 @@ export default function App() {
       .then(setNotificationPreferences)
       .catch(() => undefined);
 
-    getDiscoverShows(selectedGenres, selectedServices)
-      .then((items) => {
-        setDiscoverItems(items);
-        setQueueIndex(0);
+    requestExpoPushToken()
+      .then((token) => {
+        if (!token) return;
+        return registerDevicePushToken({
+          userId: currentUser.id,
+          expoPushToken: token,
+          platform: Platform.OS,
+        });
       })
-      .catch(() => setDiscoverItems([]));
+      .catch(() => undefined);
+
+    if (crisisControl.features.externalSearch && crisisControl.mode !== 'maintenance') {
+      getDiscoverShows(selectedGenres, selectedServices, currentUser.id)
+        .then((items) => {
+          setDiscoverItems(items);
+          setQueueIndex(0);
+        })
+        .catch(() => setDiscoverItems([]));
+    }
 
     refreshUserData(currentUser.id).catch(() => undefined);
-  }, [currentUser, refreshUserData, setActiveTheme, setSelectedGenres, setSelectedServices]);
+  }, [crisisControl.features.externalSearch, crisisControl.mode, currentUser, refreshUserData, selectedGenres, selectedServices, setActiveTheme, setSelectedGenres, setSelectedServices]);
 
   useEffect(() => {
-    if (!currentUser) return;
+    if (!currentUser || !crisisControl.features.externalSearch || crisisControl.mode === 'maintenance') return;
 
-    getDiscoverShows(selectedGenres, selectedServices)
+    getDiscoverShows(selectedGenres, selectedServices, currentUser.id)
       .then((items) => {
         setDiscoverItems(items);
         setQueueIndex(0);
       })
       .catch(() => setDiscoverItems([]));
-  }, [currentUser, selectedGenres, selectedServices]);
+  }, [crisisControl.features.externalSearch, crisisControl.mode, currentUser, selectedGenres, selectedServices]);
 
   useEffect(() => {
-    if (!currentUser || !supabase) return undefined;
+    if (!currentUser || !supabase || !crisisControl.features.realtime || crisisControl.mode === 'maintenance') return undefined;
 
     const userChannel = supabase
       .channel(`itsshowtime-user-${currentUser.id}`)
@@ -490,7 +614,7 @@ export default function App() {
     return () => {
       supabase.removeChannel(userChannel);
     };
-  }, [currentUser, refreshLibrarySurface, refreshNotifications, refreshProfileStats, scheduleRealtimeRefresh]);
+  }, [crisisControl.features.realtime, crisisControl.mode, currentUser, refreshLibrarySurface, refreshNotifications, refreshProfileStats, scheduleRealtimeRefresh]);
 
   const handleAuth = async (
     mode: 'signin' | 'signup',
@@ -498,6 +622,10 @@ export default function App() {
     password: string,
     profile: { displayName: string; username: string }
   ) => {
+    if (mode === 'signup' && !crisisControl.features.newSignups) {
+      throw new Error('New account creation is temporarily paused. Please try again soon.');
+    }
+
     const authResult =
       mode === 'signin'
         ? await signInWithEmail(email, password)
@@ -546,6 +674,11 @@ export default function App() {
       const mappedResults = mapCatalogToSearchResults(catalog, trackedSearchResults);
       if (mappedResults.length) {
         setTrackedSearchResults(mappedResults);
+        return;
+      }
+
+      if (!crisisControl.features.externalSearch || crisisControl.mode === 'maintenance') {
+        setTrackedSearchResults([]);
         return;
       }
 
@@ -604,8 +737,17 @@ export default function App() {
   };
 
   const refreshAdminSummary = async () => {
-    const summary = await getAdminSummary();
-    setAdminSummary(summary);
+    setIsAdminSummaryLoading(true);
+    setAdminSummaryError('');
+    try {
+      const summary = await getAdminSummary();
+      setAdminSummary(summary);
+      if (summary.crisisControl) setCrisisControl(summary.crisisControl);
+    } catch {
+      setAdminSummaryError('Admin metrics could not be loaded.');
+    } finally {
+      setIsAdminSummaryLoading(false);
+    }
   };
 
   const handleSignOut = async () => {
@@ -623,6 +765,9 @@ export default function App() {
   };
 
   const markEpisodeWatched = async (episodeToWatch: Episode, backendEpisodeId?: string) => {
+    if (isWriteLimited) return;
+
+    triggerSuccessFeedback();
     const episodeWatchKey = backendEpisodeId ?? episodeToWatch.backendId ?? `${episodeToWatch.show}:${episodeToWatch.code}`;
     const wasAlreadyWatched = watchedEpisodeKeys[episodeWatchKey];
 
@@ -693,7 +838,12 @@ export default function App() {
   };
 
   const addShowResultToLibrary = async (resultToAdd: SearchResult) => {
+    if (isWriteLimited || !crisisControl.features.catalogImport) {
+      throw new Error('Adding shows is temporarily paused.');
+    }
+
     if (resultToAdd.type !== 'Shows') return;
+    triggerSelectionFeedback();
 
     setShowSyncStatus((current) => ({ ...current, [resultToAdd.title]: 'syncing' }));
     setLibraryTitles((titles) => (titles.includes(resultToAdd.title) ? titles : [...titles, resultToAdd.title]));
@@ -717,6 +867,7 @@ export default function App() {
         deepLink: `/shows/${toSlug(resultToAdd.title)}`,
       });
       await refreshLibrarySurface(currentUser.id);
+      triggerSuccessFeedback();
       setShowSyncStatus((current) => ({ ...current, [resultToAdd.title]: 'ready' }));
     } catch (error) {
       setShowSyncStatus((current) => ({ ...current, [resultToAdd.title]: 'failed' }));
@@ -749,10 +900,12 @@ export default function App() {
   const openSearchResult = async (result: SearchResult) => {
     if (result.type === 'Movies' || result.type === 'People') return;
 
-    try {
-      await addShowResultToLibrary(result);
-    } catch {
-      // The detail route can still hydrate the show from TVmaze.
+    if (!isWriteLimited && crisisControl.features.catalogImport) {
+      try {
+        await addShowResultToLibrary(result);
+      } catch {
+        // The detail route can still hydrate the show from TVmaze.
+      }
     }
 
     setTrackedSearchResults((results) =>
@@ -1103,14 +1256,36 @@ export default function App() {
   return (
     <SafeAreaView style={[styles.safe, themes[activeTheme]]}>
       <StatusBar style="light" />
-      {isAuthLoading ? (
-        <View style={styles.authPage}>
-          <Text style={styles.authBrand}>It’s Showtime</Text>
-          <Text style={styles.authTitle}>Opening your watch home...</Text>
+      {shouldShowSplash ? (
+        <View style={styles.splashPage}>
+          <View style={styles.splashMark}>
+            <Tv color={bg} size={34} />
+          </View>
+          <Text style={styles.splashBrand}>It’s Showtime</Text>
+          <Text style={styles.splashTitle}>Your shows are almost ready</Text>
+          <Text style={styles.splashTribute}>For the TV Time era we loved.</Text>
+          <View style={styles.splashDots}>
+            <View style={styles.splashDot} />
+            <View style={[styles.splashDot, styles.splashDotSoft]} />
+            <View style={[styles.splashDot, styles.splashDotSoft]} />
+          </View>
         </View>
+      ) : !isAuthed && isLegalPath ? (
+        <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
+          <Suspense fallback={<View style={styles.authPage}><Text style={styles.authTitle}>Loading...</Text></View>}>
+            <Routes>
+              <Route path="/privacy" element={<LegalPage kind="privacy" onBack={() => navigate('/')} />} />
+              <Route path="/terms" element={<LegalPage kind="terms" onBack={() => navigate('/')} />} />
+            </Routes>
+          </Suspense>
+        </ScrollView>
       ) : !isAuthed ? (
         <Suspense fallback={<View style={styles.authPage}><Text style={styles.authTitle}>Loading...</Text></View>}>
-          <AuthPage onContinue={handleAuth} />
+          <AuthPage
+            onContinue={handleAuth}
+            onOpenPrivacy={() => navigate('/privacy')}
+            onOpenTerms={() => navigate('/terms')}
+          />
         </Suspense>
       ) : isOnboardingOpen ? (
         <Suspense fallback={<View style={styles.authPage}><Text style={styles.authTitle}>Loading...</Text></View>}>
@@ -1129,6 +1304,18 @@ export default function App() {
             onOpenSearch={() => navigate('/search')}
             onOpenNotifications={() => navigate('/notifications')}
           />
+          {isSyncingBackend ? (
+            <View style={styles.syncBanner}>
+              <RefreshCw color={gold} size={15} />
+              <Text style={styles.syncBannerText}>Syncing latest data...</Text>
+            </View>
+          ) : null}
+          {crisisControl.mode !== 'normal' ? (
+            <View style={styles.crisisBanner}>
+              <RefreshCw color={gold} size={15} />
+              <Text style={styles.crisisBannerText}>{crisisMessage}</Text>
+            </View>
+          ) : null}
 
           <ScrollView
             contentContainerStyle={[
@@ -1139,8 +1326,33 @@ export default function App() {
             showsVerticalScrollIndicator={false}
           >
             <Suspense fallback={<View style={styles.routeFallback}><Text style={styles.routeFallbackText}>Loading...</Text></View>}>
-              <Routes>
-                <Route path="/" element={<Navigate to="/shows" replace />} />
+              <View key={location.pathname} style={styles.routeTransition}>
+                <Routes>
+                <Route path="/" element={<Navigate to="/today" replace />} />
+                <Route path="/privacy" element={<LegalPage kind="privacy" onBack={() => navigate(-1)} />} />
+                <Route path="/terms" element={<LegalPage kind="terms" onBack={() => navigate(-1)} />} />
+                <Route
+                  path="/today"
+                  element={
+                    <TodayPage
+                      displayName={profile?.displayName ?? 'Watcher'}
+                      episodes={trackedEpisodes}
+                      upcomingGroups={trackedUpcomingGroups}
+                      libraryShows={trackedLibraryShows}
+                      notifications={trackedNotifications}
+                      discovery={activeDiscovery}
+                      stats={profileStats}
+                      isSyncing={isSyncingBackend}
+                      onOpenEpisode={(episode) => navigate(`/shows/${toSlug(episode.show)}`)}
+                      onMarkWatched={(episode) => {
+                        return markEpisodeWatched(episode);
+                      }}
+                      onOpenDiscover={() => navigate('/discover')}
+                      onOpenSearch={() => navigate('/search')}
+                      onOpenCalendar={() => navigate('/calendar')}
+                    />
+                  }
+                />
                 <Route
                   path="/search"
                   element={
@@ -1161,6 +1373,10 @@ export default function App() {
                   <NotificationsPage
                     notifications={trackedNotifications}
                     onBack={() => navigate(-1)}
+                    onLoadMore={loadMoreNotifications}
+                    hasMore={hasMoreNotifications}
+                    isLoading={isNotificationsLoading}
+                    error={notificationsError}
                     onMarkAllRead={() =>
                     {
                       setTrackedNotifications((notifications) =>
@@ -1206,6 +1422,7 @@ export default function App() {
                       }}
                       onSubmitComment={async (body, mood) => {
                         if (!currentUser || !communityContext) return;
+                        if (isWriteLimited || !crisisControl.features.communityWrites) return;
                         await createCommunityComment({
                           userId: currentUser.id,
                           context: { kind: communityContext.kind, title: communityContext.title },
@@ -1279,6 +1496,19 @@ export default function App() {
                           deepLink: '/community',
                         });
                       }}
+                      onLoadReplies={(commentId) => getCommentReplies(commentId, currentUser?.id)}
+                      onSubmitReply={async (comment, body, mood) => {
+                        if (!currentUser) return;
+                        if (isWriteLimited || !crisisControl.features.communityWrites) return;
+                        await createCommunityReply({ userId: currentUser.id, parentComment: comment, body, mood });
+                        await createNotification({
+                          userId: comment.userId ?? currentUser.id,
+                          type: 'Reply',
+                          title: 'New reply',
+                          body: `${profile?.displayName ?? 'A watcher'} replied to your comment.`,
+                          deepLink: '/community',
+                        });
+                      }}
                     />
                   ) : (
                     <Navigate to="/shows" replace />
@@ -1309,6 +1539,8 @@ export default function App() {
                       refreshAdminSummary().catch(() => undefined);
                       navigate('/admin');
                     }}
+                    onOpenPrivacy={() => navigate('/privacy')}
+                    onOpenTerms={() => navigate('/terms')}
                   />
                 }
               />
@@ -1320,6 +1552,8 @@ export default function App() {
                       summary={adminSummary}
                       onBack={() => navigate('/settings')}
                       onRefresh={() => refreshAdminSummary()}
+                      isLoading={isAdminSummaryLoading}
+                      error={adminSummaryError}
                       onRetryImport={(jobId) =>
                         retryCatalogImport(jobId)
                           .then(refreshAdminSummary)
@@ -1333,6 +1567,19 @@ export default function App() {
                       onClearCache={(cacheId) =>
                         clearSearchCache(cacheId)
                           .then(refreshAdminSummary)
+                          .catch(() => undefined)
+                      }
+                      onRunMaintenance={() =>
+                        runDatabaseMaintenance()
+                          .then(refreshAdminSummary)
+                          .catch(() => undefined)
+                      }
+                      onSetCrisisControl={(config, incidentMessage) =>
+                        updateCrisisControl(config, incidentMessage)
+                          .then((nextConfig) => {
+                            setCrisisControl(nextConfig);
+                            return refreshAdminSummary();
+                          })
                           .catch(() => undefined)
                       }
                     />
@@ -1387,19 +1634,36 @@ export default function App() {
               <Route
                 path="/shows"
                 element={
-                  <>
+                  <View style={styles.showsQueuePanel}>
                     <View style={styles.segment}>
-                      <Text style={styles.segmentActive}>Watch Next</Text>
-                      <Text style={styles.segmentMuted}>Upcoming</Text>
+                      <Pressable
+                        style={({ pressed }) => [styles.segmentButton, showsQueueTab === 'watchNext' && styles.segmentButtonActive, pressed && styles.pressablePressed]}
+                        onPress={() => setShowsQueueTab('watchNext')}
+                      >
+                        <Text style={[styles.segmentButtonText, showsQueueTab === 'watchNext' && styles.segmentButtonTextActive]}>Watch Next</Text>
+                      </Pressable>
+                      <Pressable
+                        style={({ pressed }) => [styles.segmentButton, showsQueueTab === 'upcoming' && styles.segmentButtonActive, pressed && styles.pressablePressed]}
+                        onPress={() => setShowsQueueTab('upcoming')}
+                      >
+                        <Text style={[styles.segmentButtonText, showsQueueTab === 'upcoming' && styles.segmentButtonTextActive]}>Upcoming</Text>
+                      </Pressable>
                     </View>
-                    {trackedEpisodes.length === 0 ? (
-                      <EmptyState
-                        icon={Tv}
-                        title="No current shows tracked"
-                        body="Search for a series and add it to your Library to build your next episode queue."
-                        action="Find shows"
-                      />
-                    ) : (
+                    {showsQueueTab === 'watchNext' && trackedEpisodes.length === 0 ? (
+                      <Pressable style={({ pressed }) => [styles.showsQueueEmpty, pressed && styles.pressablePressed]} onPress={() => navigate('/search')}>
+                        <View style={styles.todayNextEmptyIcon}>
+                          <Tv color={gold} size={24} />
+                        </View>
+                        <View style={styles.todayNextEmptyCopy}>
+                          <Text style={styles.libraryShowTitle}>No current shows tracked</Text>
+                          <Text style={styles.libraryNext}>Add a series to start your queue.</Text>
+                        </View>
+                        <View style={styles.todayNextEmptyAction}>
+                          <Compass color={bg} size={17} />
+                          <Text style={styles.continueText}>Explore</Text>
+                        </View>
+                      </Pressable>
+                    ) : showsQueueTab === 'watchNext' ? (
                       trackedEpisodes.map((episode) => (
                         <EpisodeCard
                           key={episode.id}
@@ -1407,8 +1671,39 @@ export default function App() {
                           onPress={() => navigate(`/shows/${toSlug(episode.show)}`)}
                         />
                       ))
+                    ) : showsUpcomingItems.length === 0 ? (
+                      <Pressable style={({ pressed }) => [styles.showsQueueEmpty, pressed && styles.pressablePressed]} onPress={() => navigate('/search')}>
+                        <View style={styles.todayNextEmptyIcon}>
+                          <CalendarDays color={gold} size={24} />
+                        </View>
+                        <View style={styles.todayNextEmptyCopy}>
+                          <Text style={styles.libraryShowTitle}>No upcoming episodes yet</Text>
+                          <Text style={styles.libraryNext}>New dates will land here.</Text>
+                        </View>
+                        <View style={styles.todayNextEmptyAction}>
+                          <Compass color={bg} size={17} />
+                          <Text style={styles.continueText}>Explore</Text>
+                        </View>
+                      </Pressable>
+                    ) : (
+                      showsUpcomingItems.map((item) => (
+                        <Pressable
+                          key={`${item.show}-${item.code}`}
+                          style={({ pressed }) => [styles.showsUpcomingCard, pressed && styles.pressablePressed]}
+                          onPress={() => navigate(`/shows/${toSlug(item.show)}`)}
+                        >
+                          <View style={styles.showsUpcomingDate}>
+                            <Text style={styles.libraryMiniMeta}>{item.group.day}</Text>
+                            <Text style={styles.libraryMiniTitle}>{item.group.date}</Text>
+                          </View>
+                          <View style={styles.todayNextEmptyCopy}>
+                            <Text style={styles.libraryShowTitle}>{item.show}</Text>
+                            <Text style={styles.libraryNext}>{item.code} - {item.title}</Text>
+                          </View>
+                        </Pressable>
+                      ))
                     )}
-                  </>
+                  </View>
                 }
               />
               <Route path="/movies/:title" element={<MovieDetailRoute />} />
@@ -1463,12 +1758,14 @@ export default function App() {
                 }
               />
               <Route path="*" element={<Navigate to="/shows" replace />} />
-              </Routes>
+                </Routes>
+              </View>
             </Suspense>
           </ScrollView>
 
           {shouldShowNav && (
             <View style={[styles.nav, isDesktop && styles.navDesktop]}>
+              <NavItem active={activeTab === 'today'} label="Today" onPress={() => navigate('/today')} icon={Home} />
               <NavItem active={activeTab === 'shows'} label="Shows" onPress={() => navigate('/shows')} icon={Tv} />
               <NavItem active={activeTab === 'movies'} label="Movies" onPress={() => navigate('/movies')} icon={Clapperboard} />
               <NavItem active={activeTab === 'discover'} label="Discover" onPress={() => navigate('/discover')} icon={Compass} />
@@ -1485,6 +1782,7 @@ export default function App() {
 
 function titleFor(tab: Tab) {
   return {
+    today: 'Today',
     shows: 'Next Episodes',
     movies: 'Movie Diary',
     discover: 'Discover',

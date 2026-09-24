@@ -33,7 +33,7 @@ export function DiscoverQueue({
       <EmptyState
         icon={Sparkles}
         title="Building your discover queue"
-        body="Live TVmaze picks will appear here once the catalog responds."
+        body="Live picks will appear here."
       />
     );
   }
@@ -57,26 +57,26 @@ export function DiscoverQueue({
         imageStyle={styles.heroQueueImage}
         resizeMode="cover"
       >
-        <Pressable style={styles.heroShade} onPress={() => onOpen(item)}>
+        <Pressable style={({ pressed }) => [styles.heroShade, pressed && styles.pressablePressed]} onPress={() => onOpen(item)}>
           <View style={styles.fitRow}>
             {item.fit.map((fit) => (
               <Text key={fit} style={styles.fitBadge}>{fit}</Text>
-            ))}
-          </View>
-          <Text style={[styles.heroTitle, isCompact && styles.heroTitleCompact]}>{item.title}</Text>
-          <Text style={styles.heroMeta}>{item.meta}</Text>
-          <Text style={styles.heroBody}>{item.body}</Text>
-          <Text style={styles.heroReason}>{item.reason}</Text>
+          ))}
+        </View>
+        <Text style={[styles.heroTitle, isCompact && styles.heroTitleCompact]}>{item.title}</Text>
+        <Text style={styles.heroMeta}>{item.meta}</Text>
+          {!isCompact && <Text style={styles.heroBody}>{item.body}</Text>}
+          {!isCompact && <Text style={styles.heroReason}>{item.reason}</Text>}
         </Pressable>
       </ImageBackground>
 
-      <View style={styles.discoverMoodRail}>
+      {!isCompact && <View style={styles.discoverMoodRail}>
         {moodPicks.map((mood) => (
           <Text key={mood} style={styles.discoverMoodPill}>{mood}</Text>
         ))}
-      </View>
+      </View>}
 
-      <View style={styles.discoverInsightGrid}>
+      {!isCompact && <View style={styles.discoverInsightGrid}>
         {insightCards.map(({ label, value, icon: Icon }) => (
           <View key={label} style={styles.discoverInsightCard}>
             <Icon color={gold} size={18} />
@@ -84,15 +84,22 @@ export function DiscoverQueue({
             <Text style={styles.discoverInsightLabel}>{label}</Text>
           </View>
         ))}
-      </View>
+      </View>}
+
+      {!isCompact && <View style={styles.discoverWhyPanel}>
+        <Text style={styles.discoverWhyTitle}>Why this pick works</Text>
+        <Text style={styles.discoverWhyBody}>
+          Based on your taste and library.
+        </Text>
+      </View>}
 
       <View style={styles.queueActions}>
-        <Pressable style={styles.queueAction} onPress={onAdvance}>
+        <Pressable style={({ pressed }) => [styles.queueAction, pressed && styles.pressablePressed]} onPress={onAdvance}>
           <X color={ink} size={24} />
           <Text style={styles.queueActionText}>Skip</Text>
         </Pressable>
         <Pressable
-          style={[styles.queueAction, styles.queueActionPrimary]}
+          style={({ pressed }) => [styles.queueAction, styles.queueActionPrimary, pressed && styles.pressablePressed]}
           onPress={() => {
             Promise.resolve(onAdd(item)).then(onAdvance);
           }}
@@ -100,7 +107,7 @@ export function DiscoverQueue({
           <Plus color={bg} size={26} strokeWidth={3} />
           <Text style={styles.queueActionPrimaryText}>Add</Text>
         </Pressable>
-        <Pressable style={styles.queueAction} onPress={onAdvance}>
+        <Pressable style={({ pressed }) => [styles.queueAction, pressed && styles.pressablePressed]} onPress={onAdvance}>
           <RotateCcw color={ink} size={23} />
           <Text style={styles.queueActionText}>Maybe</Text>
         </Pressable>
@@ -112,7 +119,7 @@ export function DiscoverQueue({
       </View>
       <View style={[styles.nextRail, isCompact && styles.nextRailCompact]}>
         {nextItems.map((nextItem) => (
-          <Pressable key={nextItem.title} style={[styles.nextCard, isCompact && styles.nextCardCompact]} onPress={() => onOpen(nextItem)}>
+          <Pressable key={nextItem.title} style={({ pressed }) => [styles.nextCard, isCompact && styles.nextCardCompact, pressed && styles.pressablePressed]} onPress={() => onOpen(nextItem)}>
             <ImageBackground
               source={{ uri: nextItem.image }}
               style={styles.nextPoster}

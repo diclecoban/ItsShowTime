@@ -104,7 +104,7 @@ export function ListsPage({
           <EmptyState
             icon={ListPlus}
             title="No titles here yet"
-            body="Add shows or movies from detail pages to start shaping this list."
+            body="Add titles from detail pages."
             action="Add title"
           />
         ) : (

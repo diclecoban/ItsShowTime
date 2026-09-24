@@ -1,4 +1,5 @@
 import { corsHeaders, jsonResponse } from '../_shared/cors.ts';
+import { getCrisisControl, isFeatureEnabled } from '../_shared/crisisControl.ts';
 import { logEdgeEvent } from '../_shared/observability.ts';
 import { createSupabaseAdmin } from '../_shared/supabaseAdmin.ts';
 
@@ -39,6 +40,18 @@ Deno.serve(async (request) => {
   const supabase = createSupabaseAdmin();
   const userId = await getUserId(request, supabase);
   if (!userId) return jsonResponse({ error: 'Unauthorized' }, 401);
+  const crisisControl = await getCrisisControl(supabase);
+  if (!isFeatureEnabled(crisisControl, 'catalogImport')) {
+    await logEdgeEvent(supabase, {
+      functionName: 'request-catalog-import',
+      eventType: 'feature_disabled',
+      statusCode: 503,
+      durationMs: Date.now() - startedAt,
+      userId,
+      metadata: { mode: crisisControl.mode },
+    });
+    return jsonResponse({ error: crisisControl.message || 'Catalog imports are temporarily paused.' }, 503);
+  }
 
   const body = (await request.json().catch(() => ({}))) as { show?: TvmazeShow };
   const show = body.show;

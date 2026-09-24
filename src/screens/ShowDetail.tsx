@@ -2,7 +2,7 @@ import { ArrowLeft, Check, ListPlus, MessageCircle, Play, Plus, RotateCcw, Star,
 import { useEffect, useState } from 'react';
 import { ImageBackground, Pressable, Text, View } from 'react-native';
 
-import { EmptyState, MiniStat, ProgressRail } from '../components';
+import { BackendState, EmptyState, MiniStat, ProgressRail } from '../components';
 import { accent, bg, gold, ink, muted } from '../theme';
 import { styles } from '../styles';
 import type { CustomList, DetailEpisode, Episode, ShowDetailInfo, ShowSeason } from '../types';
@@ -47,6 +47,18 @@ export function ShowDetail({
   const activeSeasonInfo = seasonList.find((season) => season.season === activeSeason);
   const nextEpisode = detailEpisodes.find((item) => !item.watched) ?? detailEpisodes[0];
   const heroImage = showInfo?.backdropUrl ?? showInfo?.posterUrl ?? episode.image;
+  const importStatusTitle =
+    syncStatus === 'failed'
+      ? 'Episode import needs attention'
+      : syncStatus === 'ready'
+        ? 'Live catalog ready'
+        : 'Importing episode guide';
+  const importStatusBody =
+    syncStatus === 'failed'
+      ? showInfo?.importError ?? 'The TVmaze import job failed. You can retry the sync.'
+      : syncStatus === 'ready'
+        ? 'Seasons, episodes, ratings, and watch progress are loaded from the live catalog.'
+        : 'It can take a short moment after adding a new show. You can keep browsing while this finishes.';
   const [isListPickerOpen, setIsListPickerOpen] = useState(false);
   const [selectedListTitle, setSelectedListTitle] = useState(lists[0]?.title ?? '');
   const [isSavedToList, setIsSavedToList] = useState(false);
@@ -73,7 +85,7 @@ export function ShowDetail({
         <View style={styles.detailShade}>
           <Text style={styles.detailMeta}>{showInfo?.status ?? 'Series'} - Avg {(showInfo?.averageRating ?? episode.averageRating).toFixed(1)}</Text>
           <Text style={styles.detailTitle}>{showInfo?.title ?? episode.show}</Text>
-          <Text style={styles.detailBody}>{showInfo?.overview ?? 'Keep your season in order, jump into the next episode, and unlock spoiler-safe reactions after watching.'}</Text>
+          <Text style={styles.detailBody}>{showInfo?.overview ?? 'Track seasons, episodes, and reactions.'}</Text>
         </View>
       </ImageBackground>
 
@@ -131,9 +143,15 @@ export function ShowDetail({
       )}
 
       <View style={styles.detailProgressCard}>
-        <View>
-          <Text style={styles.detailSmallLabel}>Season progress</Text>
-          <Text style={styles.detailProgressValue}>{detailEpisodes.filter((item) => item.watched).length}/{detailEpisodes.length} watched</Text>
+        <View style={styles.detailProgressTop}>
+          <View>
+            <Text style={styles.detailSmallLabel}>Season progress</Text>
+            <Text style={styles.detailProgressValue}>{detailEpisodes.filter((item) => item.watched).length}/{detailEpisodes.length} watched</Text>
+          </View>
+          <View style={styles.nextEpisodeBadge}>
+            <Text style={styles.nextEpisodeBadgeLabel}>Next</Text>
+            <Text style={styles.nextEpisodeBadgeValue}>{nextEpisode?.fullCode ?? nextEpisode?.code ?? 'Pending'}</Text>
+          </View>
         </View>
         <ProgressRail
           watched={detailEpisodes.filter((item) => item.watched).length}
@@ -155,6 +173,29 @@ export function ShowDetail({
                 ? 'Episode sync needs a retry'
                 : 'Syncing episodes from TVmaze'}
           </Text>
+        </View>
+        {syncStatus !== 'ready' ? (
+          <BackendState
+            mode={syncStatus === 'failed' ? 'error' : 'loading'}
+            title={importStatusTitle}
+            body={importStatusBody}
+            onRetry={syncStatus === 'failed' ? onRetry : undefined}
+          />
+        ) : null}
+      </View>
+
+      <View style={styles.detailGuidePanel}>
+        <View style={styles.detailGuideStep}>
+          <Text style={styles.detailGuideNumber}>1</Text>
+          <Text style={styles.detailGuideText}>Pick a season below.</Text>
+        </View>
+        <View style={styles.detailGuideStep}>
+          <Text style={styles.detailGuideNumber}>2</Text>
+          <Text style={styles.detailGuideText}>Tap an episode to mark watched and react.</Text>
+        </View>
+        <View style={styles.detailGuideStep}>
+          <Text style={styles.detailGuideNumber}>3</Text>
+          <Text style={styles.detailGuideText}>Community unlocks after progress.</Text>
         </View>
       </View>
 
@@ -216,7 +257,7 @@ export function ShowDetail({
         <EmptyState
           icon={Tv}
           title="Episode data is syncing"
-          body="This show is in your library, but its episode list has not been imported yet."
+          body="Episode data is still syncing."
           action="Back to shows"
         />
           )}

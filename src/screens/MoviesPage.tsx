@@ -22,8 +22,7 @@ export function MoviesPage({
         </View>
         <Text style={styles.movieLockedTitle}>Movies are coming when the budget is ready</Text>
         <Text style={styles.movieLockedBody}>
-          Series tracking is free while we keep building the catalog. A richer movie database, ratings, lists, and reactions
-          will unlock when It’s Showtime has the budget for broader data access.
+          Movie tracking unlocks when the catalog budget is ready.
         </Text>
         <Pressable
           style={styles.supportUsButton}

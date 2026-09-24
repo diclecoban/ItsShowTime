@@ -24,7 +24,7 @@ Deno.serve(async (request) => {
 
     const reason = await request.json().then((body) => body?.reason as string | undefined).catch(() => undefined);
 
-    await supabase
+    const { data: deletionRequest } = await supabase
       .from('account_deletion_requests')
       .upsert(
         {
@@ -33,10 +33,25 @@ Deno.serve(async (request) => {
           processed_at: new Date().toISOString(),
         },
         { onConflict: 'user_id' }
-      );
+      )
+      .select('id')
+      .maybeSingle();
+
+    await supabase.from('account_deletion_audit').insert({
+      user_id: userData.user.id,
+      request_id: deletionRequest?.id ?? null,
+      action: 'requested',
+      metadata: { reason: reason ?? 'Requested from app' },
+    });
 
     const { error: deleteError } = await supabase.auth.admin.deleteUser(userData.user.id);
     if (deleteError) throw deleteError;
+
+    await supabase.from('account_deletion_audit').insert({
+      user_id: userData.user.id,
+      request_id: deletionRequest?.id ?? null,
+      action: 'deleted',
+    });
 
     return jsonResponse({ ok: true });
   } catch (error) {

@@ -4,7 +4,14 @@ import { createSupabaseAdmin } from '../_shared/supabaseAdmin.ts';
 type AdminAction =
   | { action: 'retry_import'; jobId: string }
   | { action: 'hide_comment'; commentId: string }
-  | { action: 'clear_cache'; cacheId?: string; query?: string };
+  | { action: 'clear_cache'; cacheId?: string; query?: string }
+  | {
+      action: 'set_crisis_control';
+      mode: 'normal' | 'degraded' | 'maintenance' | 'readonly';
+      message?: string;
+      features?: Record<string, boolean>;
+      incidentMessage?: string;
+    };
 
 async function getAdminUserId(request: Request, supabase: ReturnType<typeof createSupabaseAdmin>) {
   const authorization = request.headers.get('Authorization');
@@ -38,6 +45,18 @@ Deno.serve(async (request) => {
   if (!adminUserId) return jsonResponse({ error: 'Admin access required' }, 403);
 
   const body = (await request.json().catch(() => ({}))) as Partial<AdminAction>;
+
+  if (body.action === 'set_crisis_control' && body.mode) {
+    const { data, error } = await supabase.rpc('set_crisis_control', {
+      next_mode: body.mode,
+      next_message: body.message ?? '',
+      next_features: body.features ?? {},
+      incident_message: body.incidentMessage ?? null,
+    });
+
+    if (error) return jsonResponse({ error: error.message }, 500);
+    return jsonResponse({ ok: true, crisisControl: data });
+  }
 
   if (body.action === 'retry_import' && body.jobId) {
     const { data: job, error } = await supabase

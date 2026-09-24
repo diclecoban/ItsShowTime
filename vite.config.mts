@@ -4,6 +4,9 @@ import { defineConfig } from 'vite';
 
 export default defineConfig({
   plugins: [react()],
+  optimizeDeps: {
+    exclude: ['expo', 'expo-haptics', 'expo-notifications', 'expo-modules-core'],
+  },
   build: {
     rollupOptions: {
       output: {

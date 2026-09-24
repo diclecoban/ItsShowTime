@@ -1,4 +1,4 @@
-import { Check, Library, MessageCircle, Settings, Star, Tv, UserRound, Zap } from 'lucide-react';
+import { Check, Eye, Library, MessageCircle, Settings, Star, Tv, UserRound, Zap } from 'lucide-react';
 import { ImageBackground, Pressable, Text, View } from 'react-native';
 
 import { EmptyState, MiniStat } from '../components';
@@ -70,6 +70,13 @@ export function ProfileDashboard({
         </View>
       </View>
 
+      <View style={styles.profileIdentityPanel}>
+        <Text style={styles.profileIdentityTitle}>Watch identity</Text>
+        <Text style={styles.profileIdentityBody}>
+          Your profile gets more personal as real watch history, reactions, comments, and lists grow together.
+        </Text>
+      </View>
+
       <View style={styles.watchPanel}>
         <View style={styles.watchStats}>
           <MiniStat label="Episodes" value={stats.episodes.toLocaleString('en-US')} />
@@ -110,7 +117,7 @@ export function ProfileDashboard({
         <EmptyState
           icon={MessageCircle}
           title="No social activity yet"
-          body="Reactions, comments, and watched episodes will appear here once you start using your library."
+          body="Your watch activity will appear here."
         />
       ) : (
         <>
@@ -119,10 +126,15 @@ export function ProfileDashboard({
               <View style={styles.publicProfileAvatar}>
                 <Text style={styles.publicProfileAvatarText}>{displayName.slice(0, 1).toUpperCase()}</Text>
               </View>
+              <View style={[styles.publicProfileAvatar, styles.publicProfileAvatarOverlap]}>
+                <Eye color={bg} size={15} />
+              </View>
             </View>
             <View style={styles.publicProfileCopy}>
-              <Text style={styles.publicProfileTitle}>Your spoiler-safe activity</Text>
-              <Text style={styles.publicProfileBody}>Only real watched episodes, reactions, and comments show up here.</Text>
+              <Text style={styles.publicProfileTitle}>@{username}'s public watch profile</Text>
+              <Text style={styles.publicProfileBody}>
+                {stats.episodes} watched episodes, {stats.reactions} reactions, and {stats.comments} comments are ready to become your social identity.
+              </Text>
             </View>
           </View>
           <View style={styles.socialFeed}>
@@ -167,7 +179,7 @@ export function ProfileDashboard({
         <EmptyState
           icon={Library}
           title="No favorite shows yet"
-          body="Shows you add to your Library will appear here as your real watch profile grows."
+          body="Library favorites will appear here."
           action="Find shows"
         />
       ) : (

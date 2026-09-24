@@ -6,10 +6,17 @@
     "orientation": "portrait",
     "icon": "./assets/icon.png",
     "userInterfaceStyle": "light",
+    "scheme": "itsshowtime",
     "ios": {
-      "supportsTablet": true
+      "supportsTablet": true,
+      "bundleIdentifier": "com.itsshowtime.app",
+      "infoPlist": {
+        "NSUserNotificationsUsageDescription": "It’s Showtime sends reminders for episodes, replies, and watch activity you choose to follow."
+      }
     },
     "android": {
+      "package": "com.itsshowtime.app",
+      "permissions": ["POST_NOTIFICATIONS"],
       "adaptiveIcon": {
         "backgroundColor": "#E6F4FE",
         "foregroundImage": "./assets/android-icon-foreground.png",
@@ -19,7 +26,9 @@
       "predictiveBackGestureEnabled": false
     },
     "web": {
-      "favicon": "./assets/favicon.png"
+      "favicon": "./assets/favicon.png",
+      "name": "It’s Showtime",
+      "shortName": "It’s Showtime"
     }
   }
 }

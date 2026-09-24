@@ -180,6 +180,20 @@ export function EpisodeReactionPage({
         multiline
       />
 
+      <View style={styles.reactionRecapCard}>
+        <View>
+          <Text style={styles.reactionSectionLabel}>Reaction recap</Text>
+          <Text style={styles.reactionRecapTitle}>{quickReaction}</Text>
+        </View>
+        <View style={styles.reactionRecapScore}>
+          <Star color={gold} fill={gold} size={16} />
+          <Text style={styles.reactionRecapScoreText}>{rating}/5</Text>
+        </View>
+        <Text style={styles.reactionRecapBody}>
+          {selectedMood} - {spoilerComfort} - {favoriteCharacter}
+        </Text>
+      </View>
+
       <Text style={styles.sectionTitle}>Spoiler-safe comments</Text>
       <Pressable style={styles.commentsPreview} onPress={onOpenCommunity}>
         <MessageCircle color={accent} size={22} />

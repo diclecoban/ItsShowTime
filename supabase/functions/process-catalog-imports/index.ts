@@ -1,4 +1,5 @@
 import { corsHeaders, jsonResponse } from '../_shared/cors.ts';
+import { getCrisisControl, isFeatureEnabled } from '../_shared/crisisControl.ts';
 import { logEdgeEvent } from '../_shared/observability.ts';
 import { createSupabaseAdmin } from '../_shared/supabaseAdmin.ts';
 
@@ -129,6 +130,18 @@ Deno.serve(async (request) => {
   const supabase = createSupabaseAdmin();
   const auth = await authorize(request, supabase);
   if (!auth.ok) return jsonResponse({ error: 'Unauthorized' }, 401);
+  const crisisControl = await getCrisisControl(supabase);
+  if (!isFeatureEnabled(crisisControl, 'queueWorkers')) {
+    await logEdgeEvent(supabase, {
+      functionName: 'process-catalog-imports',
+      eventType: 'worker_paused',
+      statusCode: 200,
+      durationMs: Date.now() - startedAt,
+      userId: auth.userId,
+      metadata: { mode: crisisControl.mode },
+    });
+    return jsonResponse({ ok: true, paused: true, results: [] });
+  }
 
   let body: { job?: { tvmazeId?: number; showId?: string }; limit?: number } = {};
   try {

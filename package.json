@@ -5,6 +5,8 @@
   "dependencies": {
     "@supabase/supabase-js": "^2.116.0",
     "expo": "~57.0.22",
+    "expo-haptics": "~57.0.3",
+    "expo-notifications": "~57.0.19",
     "expo-status-bar": "~57.0.1",
     "lucide-react": "^1.45.0",
     "lucide-react-native": "^1.45.0",
@@ -28,13 +30,16 @@
     "ios": "expo start --ios",
     "expo:web": "expo start --web",
     "web": "vite --host 0.0.0.0 --port 8081",
+    "build": "vite build",
     "supabase:start": "supabase start",
     "supabase:stop": "supabase stop",
     "supabase:db:push": "supabase db push",
     "supabase:functions:serve": "supabase functions serve",
     "supabase:types": "supabase gen types typescript --local > src/lib/database.types.ts",
     "supabase:types:linked": "supabase gen types typescript --linked > src/lib/database.types.ts",
-    "test:backend": "node scripts/backend-smoke-tests.mjs"
+    "test:backend": "node scripts/backend-smoke-tests.mjs",
+    "test:performance": "node scripts/performance-smoke-tests.mjs",
+    "supabase:db:lint": "supabase db lint --linked"
   },
   "private": true
 }

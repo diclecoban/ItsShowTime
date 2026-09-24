@@ -2,7 +2,7 @@ import { ArrowLeft, Bell, Check } from 'lucide-react';
 import { useEffect, useMemo, useState } from 'react';
 import { Pressable, Text, View } from 'react-native';
 
-import { EmptyState, FilterChips } from '../components';
+import { BackendState, EmptyState, FilterChips } from '../components';
 import { bg, ink } from '../theme';
 import { styles } from '../styles';
 import type { NotificationItem } from '../types';
@@ -12,11 +12,19 @@ export function NotificationsPage({
   onBack,
   onMarkAllRead,
   onToggleRead,
+  onLoadMore,
+  hasMore,
+  isLoading,
+  error,
 }: {
   notifications: NotificationItem[];
   onBack: () => void;
   onMarkAllRead: () => void;
   onToggleRead: (id: string) => void;
+  onLoadMore: () => void | Promise<void>;
+  hasMore: boolean;
+  isLoading: boolean;
+  error?: string;
 }) {
   const [activeFilter, setActiveFilter] = useState('All');
   const [visibleNotificationCount, setVisibleNotificationCount] = useState(20);
@@ -43,7 +51,7 @@ export function NotificationsPage({
     [notifications, unreadCount]
   );
   const visibleNotifications = filteredNotifications.slice(0, visibleNotificationCount);
-  const hasMoreNotifications = filteredNotifications.length > visibleNotifications.length;
+  const hasMoreLocalNotifications = filteredNotifications.length > visibleNotifications.length;
 
   useEffect(() => {
     setVisibleNotificationCount(20);
@@ -60,7 +68,7 @@ export function NotificationsPage({
         <View>
           <Text style={styles.libraryKicker}>Activity</Text>
           <Text style={styles.libraryTitle}>{unreadCount} unread updates</Text>
-          <Text style={styles.libraryBody}>Premieres, reminders, badges, and spoiler-safe replies in one place.</Text>
+          <Text style={styles.libraryBody}>Reminders, replies, and updates.</Text>
         </View>
         <View style={styles.notificationsBell}>
           <Bell color={bg} size={24} />
@@ -84,6 +92,10 @@ export function NotificationsPage({
       </View>
 
       <View style={styles.notificationList}>
+        {isLoading && notifications.length === 0 ? (
+          <BackendState title="Loading notifications" body="Your latest reminders and replies are being synced." />
+        ) : null}
+        {error ? <BackendState mode="error" title="Notifications could not load" body={error} /> : null}
         {visibleNotifications.map(({ id, type, title, body, time, unread, icon: Icon, tone }) => (
           <View key={`${type}-${title}`} style={[styles.notificationCard, unread && styles.notificationCardUnread]}>
             {unread && <View style={styles.notificationAccentBar} />}
@@ -109,16 +121,21 @@ export function NotificationsPage({
             {unread && <View style={styles.unreadDot} />}
           </View>
         ))}
-        {hasMoreNotifications ? (
+        {hasMoreLocalNotifications ? (
           <Pressable style={styles.adminWideActionButton} onPress={() => setVisibleNotificationCount((count) => count + 20)}>
             <Text style={styles.adminActionText}>Load more</Text>
+          </Pressable>
+        ) : null}
+        {!hasMoreLocalNotifications && hasMore ? (
+          <Pressable style={styles.adminWideActionButton} onPress={onLoadMore} disabled={isLoading}>
+            <Text style={styles.adminActionText}>{isLoading ? 'Loading...' : 'Load more'}</Text>
           </Pressable>
         ) : null}
         {filteredNotifications.length === 0 && (
           <EmptyState
             icon={Bell}
             title={`No ${activeFilter.toLowerCase()} notifications`}
-            body="When your shows, lists, and comments need attention, they will appear here."
+            body="New updates will appear here."
             action="All caught up"
           />
         )}

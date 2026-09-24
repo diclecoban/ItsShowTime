@@ -1,4 +1,5 @@
 import { corsHeaders, jsonResponse } from '../_shared/cors.ts';
+import { getCrisisControl, isFeatureEnabled } from '../_shared/crisisControl.ts';
 import { logEdgeEvent } from '../_shared/observability.ts';
 import { createSupabaseAdmin } from '../_shared/supabaseAdmin.ts';
 
@@ -68,6 +69,7 @@ Deno.serve(async (request) => {
   const supabase = createSupabaseAdmin();
   const userId = await authorize(request, supabase);
   if (!userId) return jsonResponse({ error: 'Unauthorized' }, 401);
+  const crisisControl = await getCrisisControl(supabase);
 
   const body = (await request.json().catch(() => ({}))) as { query?: string };
   const term = body.query?.trim();
@@ -104,6 +106,18 @@ Deno.serve(async (request) => {
       metadata: { query: normalizedQuery },
     });
     return jsonResponse({ results: cached.payload, cached: true });
+  }
+
+  if (!isFeatureEnabled(crisisControl, 'externalSearch')) {
+    await logEdgeEvent(supabase, {
+      functionName: 'search-tvmaze',
+      eventType: 'feature_disabled',
+      statusCode: 503,
+      durationMs: Date.now() - startedAt,
+      userId,
+      metadata: { query: normalizedQuery, mode: crisisControl.mode },
+    });
+    return jsonResponse({ error: crisisControl.message || 'External search is temporarily limited.' }, 503);
   }
 
   await logEdgeEvent(supabase, {
